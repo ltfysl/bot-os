@@ -166,6 +166,29 @@ Secrets management enables users to provide API keys for third-party providers (
 **Evidence:**
 - Screenshot: `multiple-secrets.png`
 
+### Path 9: Clear Provider Secret
+
+**When to verify:** Changes to secret clearing or UI for removing secrets
+
+**Steps:**
+1. Set a secret for a provider (provider shows as available)
+2. Clear the secret via UI or IPC (if UI exists)
+3. Open provider menu
+4. Verify provider now shows "Needs key" again
+5. Attempt to use that provider with an agent
+6. Verify provider unavailable error appears
+
+**Expected behavior:**
+- `clearProviderSecret` removes secret from main process
+- Provider availability immediately reflects cleared state
+- No remnants of secret value in memory or logs
+- Returns `{ ok: true, cleared: true }` if secret existed
+- Returns `{ ok: true, cleared: false }` if secret didn't exist
+
+**Evidence:**
+- Screenshot: `secret-cleared.png`
+- Console log showing clear result
+
 ## Edge Cases to Test
 
 - **Empty submission**: Try submitting with empty input (should be disabled)
@@ -188,20 +211,36 @@ If you've changed code outside secrets but want to verify secrets work:
 
 - `src/renderer/components/SecretRequestCard.tsx`
 - `src/renderer/components/ChatView.tsx` (triggers card)
-- `src/main/secrets.ts` (storage)
-- `src/main/preload.ts` (IPC: `setProviderSecret`)
+- `src/main/secrets.ts` (storage: `setProviderSecret`, `clearProviderSecret`, `hasProviderSecret`)
+- `src/main/preload.ts` (IPC bridge: `setProviderSecret`, `clearProviderSecret`)
 - `src/main/agent-bus.ts` (`providerHasSecret`, availability checks)
 
 ## IPC Calls Used
 
 - `window.electronAPI.setProviderSecret(providerId, key, value)` → `Promise<{ ok: boolean, error?: string }>`
+  - Stores a secret for a provider in main process
+  - Returns `{ ok: true }` on success, `{ ok: false, error: string }` on failure
+  - Never echoes the secret value back in the response
+
+- `window.electronAPI.clearProviderSecret(providerId, key)` → `Promise<{ ok: boolean, cleared: boolean, error?: string }>`
+  - Removes a secret from main process storage
+  - Returns `{ ok: true, cleared: true }` if secret existed and was removed
+  - Returns `{ ok: true, cleared: false }` if secret did not exist
+  - Returns `{ ok: false, error: string }` on validation errors
+  - Never echoes the secret value back in the response
 
 ## Security Notes
 
-- **Context isolation**: Secrets never exposed to renderer process
-- **Preload bridge**: IPC only allows setting secrets, not reading
-- **Storage**: Secrets stored in main process memory or env vars (not in localStorage)
+- **Write-only contract**: Renderer can only set and clear secrets, never read them
+  - No `getProviderSecret` exposed to renderer process
+  - IPC responses never echo secret values back to renderer
+  - Only boolean status (`ok`, `cleared`) returned to renderer
+- **Context isolation**: Secrets never exposed to renderer process memory or transcripts
+- **Preload bridge**: IPC only allows setting and clearing secrets, not reading
+- **Main process only**: Secret values remain in main process (checked via `hasProviderSecret` internally)
+- **Storage**: Secrets stored in main process memory or env vars (not in localStorage or renderer-accessible storage)
 - **Environment variables**: Providers check `MINIMAX_APIKEY`, `ZAI_APIKEY`, etc.
+- **No echo in logs**: Secret values should never appear in console logs or IPC transcripts
 
 ## Common Issues
 
