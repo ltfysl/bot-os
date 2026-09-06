@@ -20,9 +20,23 @@ export interface Agent {
   avatar: string;
 }
 
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  hasSecret: boolean;
+  isAvailable: boolean;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
-  sendMessage: (message: string): Promise<Message> =>
-    ipcRenderer.invoke('send-message', message),
+  sendMessage: (agentId: string, message: string): Promise<Message> =>
+    ipcRenderer.invoke('send-message', agentId, message),
   getChannels: (): Promise<Channel[]> => ipcRenderer.invoke('get-channels'),
   getAgents: (): Promise<Agent[]> => ipcRenderer.invoke('get-agents'),
+  listProviders: (): Promise<ProviderInfo[]> => ipcRenderer.invoke('list-providers'),
+  setDefaultProvider: (providerId: string): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('set-default-provider', providerId),
+  getDefaultProvider: (): Promise<string | undefined> =>
+    ipcRenderer.invoke('get-default-provider'),
+  updateAgentProvider: (agentId: string, providerId: string): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('update-agent-provider', agentId, providerId),
 });

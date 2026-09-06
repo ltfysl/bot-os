@@ -76,11 +76,13 @@ npm run electron:prod
 bot-os/
 ├── src/
 │   ├── main/              # Electron main process
-│   │   ├── main.ts        # App entry, window management
+│   │   ├── main.ts        # App entry, window management, IPC handlers
 │   │   ├── preload.ts     # IPC bridge (secure context isolation)
-│   │   ├── agent-bus.ts   # Agent provider abstraction
+│   │   ├── agent-bus.ts   # Agent-provider coordination bus
+│   │   ├── secrets.ts     # Provider secret management (main-only)
 │   │   └── providers/     # AI provider implementations
-│   │       └── mock-providers.ts
+│   │       ├── mock-providers.ts
+│   │       └── minimax-provider.ts
 │   └── renderer/          # React UI
 │       ├── main.tsx       # React entry
 │       ├── App.tsx        # Root component
@@ -130,7 +132,7 @@ bot-os/
 
 ### Agent Bus Design
 
-The `AgentBus` class provides a clean abstraction for future AI provider integrations:
+The `AgentBus` class provides coordination between agents and pluggable AI providers. Each agent maps to a provider for message routing.
 
 ```typescript
 interface AgentProvider {
@@ -142,14 +144,20 @@ interface AgentProvider {
 ```
 
 **Current Providers:**
-- `MockEchoProvider` - Simple echo for testing
-- `MockIntelligentProvider` - Simulates realistic AI responses with delays
+- `MockEchoProvider` - Short-beat acknowledgments
+- `MockIntelligentProvider` - Simulates realistic AI responses with varied lengths
+- `MiniMaxProvider` - Third-party API integration (unavailable without credentials)
 
-**Future Providers (Planned):**
-- OpenAI (GPT-4, GPT-3.5)
-- Anthropic (Claude)
-- Local models (Ollama, LM Studio)
-- Custom provider plugins
+**Provider Pluggability:**
+- Providers register at startup via `AgentBus` constructor
+- Each agent binds to a specific provider via `providerId`
+- Messages route through `sendMessage(message, agentId)` to agent's provider
+- Provider secrets stay in main process only (env vars or `safeStorage`)
+- Renderer sees only `{ providerId, hasSecret, isAvailable }` status
+
+**Future Providers:**
+- OpenAI, Anthropic, local models (Ollama, LM Studio)
+- Custom provider plugins following the `AgentProvider` interface
 
 ### IPC Communication
 
@@ -157,11 +165,20 @@ Secure IPC via `contextBridge` in preload script:
 
 ```typescript
 window.electronAPI = {
-  sendMessage: (message: string) => Promise<Message>,
+  sendMessage: (agentId: string, message: string) => Promise<Message>,
   getChannels: () => Promise<Channel[]>,
   getAgents: () => Promise<Agent[]>,
+  listProviders: () => Promise<ProviderInfo[]>,
+  setDefaultProvider: (providerId: string) => Promise<{ success: boolean }>,
+  getDefaultProvider: () => Promise<string | undefined>,
+  updateAgentProvider: (agentId: string, providerId: string) => Promise<{ success: boolean }>,
 }
 ```
+
+**Key Changes:**
+- `sendMessage` now requires `agentId` to route to correct provider
+- Provider list/switch methods expose provider status without secrets
+- Agent-provider bindings updated via `updateAgentProvider`
 
 ## UI Design Philosophy
 
