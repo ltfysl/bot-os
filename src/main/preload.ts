@@ -54,6 +54,17 @@ export interface RoutineUpdateInput {
   enabled?: boolean;
 }
 
+export interface SetSecretResult {
+  ok: boolean;
+  error?: string;
+}
+
+export interface ClearSecretResult {
+  ok: boolean;
+  cleared?: boolean;
+  error?: string;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   sendMessage: (agentId: string, message: string): Promise<Message> =>
     ipcRenderer.invoke('send-message', agentId, message),
@@ -80,4 +91,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-routine-enabled', id, enabled),
   deleteRoutine: (id: string): Promise<boolean> =>
     ipcRenderer.invoke('delete-routine', id),
+  setProviderSecret: (providerId: string, secretName: string, value: string): Promise<SetSecretResult> =>
+    ipcRenderer.invoke('set-provider-secret', providerId, secretName, value),
+  clearProviderSecret: (providerId: string, secretName: string): Promise<ClearSecretResult> =>
+    ipcRenderer.invoke('clear-provider-secret', providerId, secretName),
 });
