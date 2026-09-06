@@ -293,6 +293,48 @@ window.electronAPI = {
 - [ ] Export conversations
 - [ ] Auto-updates
 
+## Verification
+
+**Important:** This project has no GitHub Actions CI. Manual verification is the gate before merge.
+
+### Running Verification
+
+All PRs that touch UI components, runtime logic, or provider integrations must run the verification skill:
+
+```bash
+# Follow the verification workflow
+# See .cursor/skills/verify-botos/SKILL.md
+```
+
+**Required steps:**
+1. Run `npm install && npm run type-check && npm start`
+2. Verify features per `.cursor/skills/verify-botos/features/` maps:
+   - `chat-shell.md` - Message sending, composer, agent switching
+   - `agent-rail.md` - Provider switching, secret management
+   - `rooms.md` - Room creation, @-mentions, multi-agent coordination
+   - `routines.md` - Routine CRUD, scheduling, enable/disable
+   - `secrets.md` - API key entry, provider availability updates
+3. Capture evidence in `artifacts/verify-botos/`
+4. Link evidence in PR description
+
+**PR template:**
+```markdown
+## Verification
+
+- [x] Launch sequence (install, type-check, start)
+- [x] Verified features: chat-shell, agent-rail
+- Evidence: `artifacts/verify-botos/`
+```
+
+### When to Verify
+
+Run verification for changes to:
+- React components (`src/renderer/components/`)
+- Agent bus or providers (`src/main/agent-bus.ts`, `src/main/providers/`)
+- IPC bridge (`src/main/preload.ts`)
+- Room, routine, or secret managers
+- Any runtime behavior visible to users
+
 ## Contributing
 
 This is the first slice of BotOS. Future contributions should:
@@ -300,6 +342,7 @@ This is the first slice of BotOS. Future contributions should:
 - Implement new providers via `AgentProvider` interface
 - Keep UI components modular and reusable
 - Maintain the premium visual feel
+- **Run verification skill before opening PR** (see Verification section)
 
 ## License
 
