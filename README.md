@@ -6,9 +6,12 @@ A premium desktop multi-agent application inspired by Grok Bot, built with Elect
 
 - 🎨 **Premium Dark Theme UI** - Warm, dense chat interface with polished typography and spacing
 - 💬 **Real-time Chat Interface** - Message composer with auto-expanding textarea and smooth animations
-- 🤖 **Agent Sidebar** - Live agent presence indicators showing status (active/idle/offline)
+- 🤖 **Agent Sidebar** - Live agent presence indicators showing status (active/idle/offline), collapses to icons at tight widths
+- 📎 **Attachment Controls** - File picker wired to attach button (noop implementation for future attachment support)
 - 📂 **Channel Switcher** - Navigate between different conversation channels
 - 🔌 **Extensible Architecture** - Clean module seams for future agent bus and provider plugins
+- 💬 **Code Recognition** - Inline backtick code/paths (`` `config.ts` ``) parsed into styled `<code>` elements
+- 🎨 **Consistent Surface Design** - Message bubbles use `--bg-message` soft surface (#181818)
 
 ## Tech Stack
 
