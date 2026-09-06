@@ -287,63 +287,64 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
   
   if (mentionedAgentIds.length === 0) {
     if (senderId) {
+      if (!room.memberAgentIds.includes(senderId)) {
+        throw new Error(`Agent ${senderId} is not a member of room ${roomId}`);
+      }
+      
       const agent = agentBus.getAgent(senderId);
       if (agent) {
-        try {
-          const response = await agentBus.sendMessage(content, senderId, { room: roomId });
-          const assistantMessage = {
-            id: response.id,
-            roomId,
-            content: response.content,
-            role: 'assistant' as const,
-            timestamp: response.timestamp,
-            agentId: senderId,
-            agentName: agent.name,
-            agentAvatar: agent.avatar,
-          };
-          roomManager.addRoomMessage(assistantMessage);
-          return assistantMessage;
-        } catch (err) {
-          console.error(`Failed to send message from agent ${senderId}:`, err);
-          throw err;
-        }
+        agentBus.sendMessage(content, senderId, { room: roomId })
+          .then((response) => {
+            const assistantMessage = {
+              id: response.id,
+              roomId,
+              content: response.content,
+              role: 'assistant' as const,
+              timestamp: response.timestamp,
+              agentId: senderId,
+              agentName: agent.name,
+              agentAvatar: agent.avatar,
+            };
+            roomManager.addRoomMessage(assistantMessage);
+            event.sender.send('room-fan-in-response', assistantMessage);
+          })
+          .catch((err) => {
+            console.error(`Failed to send message from agent ${senderId}:`, err);
+          });
       }
     }
     return userMessage;
   }
 
-  const responsePromises = mentionedAgentIds.map(async (agentId) => {
+  mentionedAgentIds.forEach((agentId) => {
     const agent = agentBus.getAgent(agentId);
     if (!agent) {
       console.error(`Agent not found: ${agentId}`);
-      return null;
+      return;
     }
 
-    try {
-      const response = await agentBus.sendMessage(content, agentId, { room: roomId });
-      const assistantMessage = {
-        id: response.id,
-        roomId,
-        content: response.content,
-        role: 'assistant' as const,
-        timestamp: response.timestamp,
-        agentId,
-        agentName: agent.name,
-        agentAvatar: agent.avatar,
-      };
-      
-      roomManager.addRoomMessage(assistantMessage);
-      
-      event.sender.send('room-fan-in-response', assistantMessage);
-      
-      return assistantMessage;
-    } catch (err) {
-      console.error(`Failed to wake agent ${agentId} in room ${roomId}:`, err);
-      return null;
-    }
+    agentBus.sendMessage(content, agentId, { room: roomId })
+      .then((response) => {
+        const assistantMessage = {
+          id: response.id,
+          roomId,
+          content: response.content,
+          role: 'assistant' as const,
+          timestamp: response.timestamp,
+          agentId,
+          agentName: agent.name,
+          agentAvatar: agent.avatar,
+        };
+        
+        roomManager.addRoomMessage(assistantMessage);
+        roomManager.incrementUnread(roomId);
+        
+        event.sender.send('room-fan-in-response', assistantMessage);
+      })
+      .catch((err) => {
+        console.error(`Failed to wake agent ${agentId} in room ${roomId}:`, err);
+      });
   });
-
-  await Promise.allSettled(responsePromises);
   
   return userMessage;
 });
