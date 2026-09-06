@@ -149,6 +149,7 @@ interface AgentProvider {
 - `MiniMaxProvider` - Real third-party API integration (see Configuration below)
 - `ZaiProvider` - Z.ai GLM-5.3 model via OpenAI-compatible endpoint (unavailable without credentials)
 - `CodingPlanProvider` - OpenAI-compatible coding assistance endpoint (unavailable without credentials)
+- `AnthropicProvider` - Anthropic Claude via Messages API (see Configuration below)
 
 **Provider Pluggability:**
 - Providers register at startup via `AgentBus` constructor
@@ -202,6 +203,18 @@ npm start
 ```
 
 The provider defaults to OpenAI's API endpoint. Without a key, it remains listed but shows as unavailable.
+
+#### Anthropic Provider
+To enable the Anthropic Claude provider, set your API key via environment variable:
+
+```bash
+export ANTHROPIC_APIKEY=your_api_key_here
+npm start
+```
+
+The provider will automatically become available when a valid key is present. Without a key, it remains listed but shows as unavailable. Optional `ANTHROPIC_BASE_URL` can be set to override the default Anthropic Messages API endpoint.
+
+**Get your API key:** Visit [Anthropic Console](https://console.anthropic.com/) to create an account and generate an API key.
 
 ### IPC Communication
 
