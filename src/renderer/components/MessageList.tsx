@@ -54,27 +54,32 @@ export default function MessageList({ messages, isLoading }: MessageListProps) {
 
   return (
     <div className="chat-messages">
-      {messages.map((message) => (
-        <div key={message.id} className={`message ${message.role}`}>
-          <div className="message-avatar">
-            {message.role === 'user' ? '👤' : '🤖'}
-          </div>
-          <div className="message-content">
-            <div className="message-header">
-              <span className="message-author">
-                {message.role === 'user' ? 'You' : 'Assistant'}
-              </span>
-              <span className="message-time">
-                {new Date(message.timestamp).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </span>
+      {messages.map((message) => {
+        const displayName = message.role === 'user' 
+          ? 'You' 
+          : (message.agentName || 'Assistant');
+        const displayAvatar = message.role === 'user' 
+          ? '👤' 
+          : (message.agentAvatar || '🤖');
+
+        return (
+          <div key={message.id} className={`message ${message.role}`}>
+            <div className="message-avatar">{displayAvatar}</div>
+            <div className="message-content">
+              <div className="message-header">
+                <span className="message-author">{displayName}</span>
+                <span className="message-time">
+                  {new Date(message.timestamp).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              </div>
+              <div className="message-text">{parseInlineCode(message.content)}</div>
             </div>
-            <div className="message-text">{parseInlineCode(message.content)}</div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {isLoading && (
         <div className="message assistant">
           <div className="message-avatar">🤖</div>

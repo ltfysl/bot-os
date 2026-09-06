@@ -5,6 +5,10 @@ export interface Message {
   content: string;
   role: 'user' | 'assistant';
   timestamp: number;
+  agentId?: string;
+  agentName?: string;
+  agentAvatar?: string;
+  targetAgentId?: string;
 }
 
 export interface Channel {
@@ -30,6 +34,11 @@ export interface ProviderInfo {
 contextBridge.exposeInMainWorld('electronAPI', {
   sendMessage: (agentId: string, message: string): Promise<Message> =>
     ipcRenderer.invoke('send-message', agentId, message),
+  onWakeResponse: (callback: (message: Message) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, message: Message) => callback(message);
+    ipcRenderer.on('wake-response', handler);
+    return () => ipcRenderer.removeListener('wake-response', handler);
+  },
   getChannels: (): Promise<Channel[]> => ipcRenderer.invoke('get-channels'),
   getAgents: (): Promise<Agent[]> => ipcRenderer.invoke('get-agents'),
   listProviders: (): Promise<ProviderInfo[]> => ipcRenderer.invoke('list-providers'),

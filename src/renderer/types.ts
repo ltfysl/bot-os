@@ -3,6 +3,10 @@ export interface Message {
   content: string;
   role: 'user' | 'assistant';
   timestamp: number;
+  agentId?: string;
+  agentName?: string;
+  agentAvatar?: string;
+  targetAgentId?: string;
 }
 
 export interface Channel {
@@ -31,6 +35,7 @@ declare global {
   interface Window {
     electronAPI: {
       sendMessage: (agentId: string, message: string) => Promise<Message>;
+      onWakeResponse: (callback: (message: Message) => void) => (() => void);
       getChannels: () => Promise<Channel[]>;
       getAgents: () => Promise<Agent[]>;
       listProviders: () => Promise<ProviderInfo[]>;

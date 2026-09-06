@@ -30,6 +30,15 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   }, []);
 
   useEffect(() => {
+    const unsubscribe = window.electronAPI.onWakeResponse((message: Message) => {
+      if (message.targetAgentId === agent?.id) {
+        setMessages((prev) => [...prev, message]);
+      }
+    });
+    return () => unsubscribe();
+  }, [agent?.id]);
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (providerMenuRef.current && !providerMenuRef.current.contains(event.target as Node)) {
         setShowProviders(false);
@@ -59,7 +68,6 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
       onAgentsChange();
     }
   };
-
   const loadSeedMessages = (agentId: string) => {
     const seedsByAgent: Record<string, Message[]> = {
       '1': [
@@ -104,8 +112,8 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
     setIsLoading(true);
 
     try {
-      const assistantMessage = await window.electronAPI.sendMessage(agent.id, content);
-      setMessages((prev) => [...prev, assistantMessage]);
+      const primaryResponse = await window.electronAPI.sendMessage(agent.id, content);
+      setMessages((prev) => [...prev, primaryResponse]);
     } catch (error) {
       console.error('Failed to send message:', error);
     } finally {

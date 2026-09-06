@@ -86,13 +86,33 @@ app.on('window-all-closed', () => {
   }
 });
 
-ipcMain.handle('send-message', async (_event, agentId: string, message: string) => {
-  const response = await agentBus.sendMessage(message, agentId);
+ipcMain.handle('send-message', async (event, agentId: string, message: string) => {
+  const primary = await agentBus.sendMessageWithWake(
+    message,
+    agentId,
+    undefined,
+    (wakeResponse) => {
+      event.sender.send('wake-response', {
+        id: wakeResponse.id,
+        content: wakeResponse.content,
+        role: wakeResponse.role,
+        timestamp: wakeResponse.timestamp,
+        agentId: wakeResponse.agentId,
+        agentName: wakeResponse.agentName,
+        agentAvatar: wakeResponse.agentAvatar,
+        targetAgentId: agentId,
+      });
+    }
+  );
+
   return {
-    id: response.id,
-    content: response.content,
-    role: response.role,
-    timestamp: response.timestamp,
+    id: primary.id,
+    content: primary.content,
+    role: primary.role,
+    timestamp: primary.timestamp,
+    agentId: primary.agentId,
+    agentName: primary.agentName,
+    agentAvatar: primary.agentAvatar,
   };
 });
 
