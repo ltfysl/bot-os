@@ -140,7 +140,6 @@ code, .path {
   font-size: 14px;
   opacity: 0.6;
   transition: all 0.15s;
-  margin-left: auto;
 }
 
 .provider-toggle:hover {

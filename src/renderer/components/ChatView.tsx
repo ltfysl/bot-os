@@ -132,7 +132,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
       <div className="chat-header">
         <span className="chat-title">{agent.name}</span>
         <span className="chat-subtitle">{agent.status}</span>
-        <div ref={providerMenuRef}>
+        <div ref={providerMenuRef} style={{ marginLeft: 'auto' }}>
           <button
             className="provider-toggle"
             onClick={() => setShowProviders(!showProviders)}
