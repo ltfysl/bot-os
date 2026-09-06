@@ -254,6 +254,10 @@ export class AgentBus {
       return hasProviderSecret('zai', 'apiKey');
     }
     
+    if (providerId === 'coding-plan') {
+      return hasProviderSecret('coding-plan', 'apiKey');
+    }
+    
     return false;
   }
 }

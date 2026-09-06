@@ -148,6 +148,7 @@ interface AgentProvider {
 - `MockIntelligentProvider` - Simulates realistic AI responses with varied lengths
 - `MiniMaxProvider` - Real third-party API integration (see Configuration below)
 - `ZaiProvider` - Z.ai GLM-5.3 model via OpenAI-compatible endpoint (unavailable without credentials)
+- `CodingPlanProvider` - OpenAI-compatible coding assistance endpoint (unavailable without credentials)
 
 **Provider Pluggability:**
 - Providers register at startup via `AgentBus` constructor
@@ -183,6 +184,24 @@ npm start
 ```
 
 The provider will automatically become available when a valid key is present. Without a key, it remains listed but shows as unavailable.
+
+#### Coding Plan Provider
+To enable the Coding Plan provider, set your API key via environment variable:
+
+```bash
+export CODING_PLAN_APIKEY=your_api_key_here
+npm start
+```
+
+Optionally configure the base URL for custom OpenAI-compatible endpoints:
+
+```bash
+export CODING_PLAN_BASE_URL=https://api.example.com/v1/chat/completions
+export CODING_PLAN_APIKEY=your_api_key_here
+npm start
+```
+
+The provider defaults to OpenAI's API endpoint. Without a key, it remains listed but shows as unavailable.
 
 ### IPC Communication
 
