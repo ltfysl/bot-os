@@ -31,11 +31,13 @@ export class RoutineManager {
   private routines: Map<string, Routine>;
   private schedulerInterval: NodeJS.Timeout | null;
   private fireCallback: RoutineFireCallback;
+  private claimedMinutes: Map<string, string>;
 
   constructor(fireCallback: RoutineFireCallback) {
     this.routines = new Map();
     this.schedulerInterval = null;
     this.fireCallback = fireCallback;
+    this.claimedMinutes = new Map();
     this.loadRoutines();
   }
 
@@ -151,7 +153,7 @@ export class RoutineManager {
     }
     this.schedulerInterval = setInterval(() => {
       this.checkSchedules();
-    }, 60000);
+    }, 5000);
     this.checkSchedules();
   }
 
@@ -179,9 +181,15 @@ export class RoutineManager {
   }
 
   private shouldFire(routine: Routine, now: Date): boolean {
+    const currentMinuteSlot = this.getMinuteSlot(now);
+    const claimedMinute = this.claimedMinutes.get(routine.id);
+    
+    if (claimedMinute === currentMinuteSlot) {
+      return false;
+    }
+    
     if (routine.lastRun) {
       const lastRunDate = new Date(routine.lastRun);
-      const currentMinuteSlot = this.getMinuteSlot(now);
       const lastRunMinuteSlot = this.getMinuteSlot(lastRunDate);
       if (currentMinuteSlot === lastRunMinuteSlot) {
         return false;
@@ -287,11 +295,15 @@ export class RoutineManager {
   }
 
   private async fireRoutine(routine: Routine, now: Date): Promise<void> {
+    const minuteSlot = this.getMinuteSlot(now);
+    this.claimedMinutes.set(routine.id, minuteSlot);
+    
+    const updated: Routine = { ...routine, lastRun: now.getTime() };
+    this.routines.set(routine.id, updated);
+    this.saveRoutines();
+    
     try {
       await this.fireCallback(routine);
-      const updated: Routine = { ...routine, lastRun: now.getTime() };
-      this.routines.set(routine.id, updated);
-      this.saveRoutines();
     } catch (err) {
       console.error(`Failed to fire routine ${routine.id}:`, err);
     }
