@@ -1,18 +1,15 @@
-import { useState, useEffect } from 'react';
-import type { Agent, ProviderInfo } from '../types';
+import type { Agent } from '../types';
 
 interface SidebarProps {
   agents: Agent[];
   activeAgentId: string;
   onAgentSelect: (agentId: string) => void;
-  onAgentsChange: () => void;
 }
 
 export default function Sidebar({
   agents,
   activeAgentId,
   onAgentSelect,
-  onAgentsChange,
 }: SidebarProps) {
   return (
     <div className="sidebar">
