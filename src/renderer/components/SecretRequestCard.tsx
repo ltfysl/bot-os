@@ -20,17 +20,27 @@ export default function SecretRequestCard({
 
   useEffect(() => {
     inputRef.current?.focus();
-  }, []);
+
+    const handleEscape = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
 
   const handleSubmit = async () => {
-    if (!secret.trim() || isSubmitting) return;
+    const trimmedSecret = secret.trim();
+    if (!trimmedSecret || isSubmitting) return;
 
     setIsSubmitting(true);
     setError(null);
 
     try {
-      const result = await window.electronAPI.setProviderSecret(providerId, secret);
-      if (result.success) {
+      const result = await window.electronAPI.setProviderSecret(providerId, 'apiKey', trimmedSecret);
+      if (result.ok) {
         setSecret('');
         onSuccess();
         setTimeout(onClose, 300);
@@ -48,9 +58,6 @@ export default function SecretRequestCard({
     if (e.key === 'Enter' && !isSubmitting) {
       e.preventDefault();
       handleSubmit();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      onClose();
     }
   };
 
