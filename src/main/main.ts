@@ -96,6 +96,11 @@ app.whenReady().then(() => {
   routineManager.startScheduler();
 
   roomManager = new RoomManager();
+  
+  const existingRooms = roomManager.listRooms();
+  if (existingRooms.length === 0) {
+    roomManager.createRoom('Team Chat', ['1', '2', '3']);
+  }
 
   createWindow();
 
