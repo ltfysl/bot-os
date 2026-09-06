@@ -31,6 +31,29 @@ export interface ProviderInfo {
   isAvailable: boolean;
 }
 
+export interface Routine {
+  id: string;
+  name: string;
+  prompt: string;
+  schedule: string;
+  enabled: boolean;
+  lastRun?: number;
+}
+
+export interface RoutineCreateInput {
+  name: string;
+  prompt: string;
+  schedule: string;
+  enabled?: boolean;
+}
+
+export interface RoutineUpdateInput {
+  name?: string;
+  prompt?: string;
+  schedule?: string;
+  enabled?: boolean;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   sendMessage: (agentId: string, message: string): Promise<Message> =>
     ipcRenderer.invoke('send-message', agentId, message),
@@ -48,4 +71,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-default-provider'),
   updateAgentProvider: (agentId: string, providerId: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke('update-agent-provider', agentId, providerId),
+  listRoutines: (): Promise<Routine[]> => ipcRenderer.invoke('list-routines'),
+  createRoutine: (input: RoutineCreateInput): Promise<Routine> =>
+    ipcRenderer.invoke('create-routine', input),
+  updateRoutine: (id: string, input: RoutineUpdateInput): Promise<Routine> =>
+    ipcRenderer.invoke('update-routine', id, input),
+  setRoutineEnabled: (id: string, enabled: boolean): Promise<Routine> =>
+    ipcRenderer.invoke('set-routine-enabled', id, enabled),
+  deleteRoutine: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('delete-routine', id),
 });
