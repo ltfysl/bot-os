@@ -61,7 +61,7 @@ export default function ChatView({ agent }: ChatViewProps) {
     setIsLoading(true);
 
     try {
-      const assistantMessage = await window.electronAPI.sendMessage(content);
+      const assistantMessage = await window.electronAPI.sendMessage(agent.id, content);
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
       console.error('Failed to send message:', error);

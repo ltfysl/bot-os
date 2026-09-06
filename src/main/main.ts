@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { AgentBus } from './agent-bus';
 import { MockEchoProvider, MockIntelligentProvider } from './providers/mock-providers';
+import { MiniMaxProvider } from './providers/minimax-provider';
 
 let mainWindow: BrowserWindow | null = null;
 let agentBus: AgentBus;
@@ -35,8 +36,36 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   agentBus = new AgentBus({
-    providers: [new MockEchoProvider(), new MockIntelligentProvider()],
+    providers: [
+      new MockEchoProvider(),
+      new MockIntelligentProvider(),
+      new MiniMaxProvider(),
+    ],
     defaultProviderId: 'mock-intelligent',
+  });
+
+  agentBus.registerAgent({
+    id: '1',
+    name: 'Assistant',
+    providerId: 'mock-intelligent',
+    avatar: '🤖',
+    status: 'active',
+  });
+
+  agentBus.registerAgent({
+    id: '2',
+    name: 'Researcher',
+    providerId: 'mock-echo',
+    avatar: '📚',
+    status: 'idle',
+  });
+
+  agentBus.registerAgent({
+    id: '3',
+    name: 'Coder',
+    providerId: 'mock-intelligent',
+    avatar: '💻',
+    status: 'active',
   });
 
   createWindow();
@@ -54,8 +83,8 @@ app.on('window-all-closed', () => {
   }
 });
 
-ipcMain.handle('send-message', async (_event, message: string) => {
-  const response = await agentBus.sendMessage(message);
+ipcMain.handle('send-message', async (_event, agentId: string, message: string) => {
+  const response = await agentBus.sendMessage(message, agentId);
   return {
     id: response.id,
     content: response.content,
@@ -73,9 +102,30 @@ ipcMain.handle('get-channels', async () => {
 });
 
 ipcMain.handle('get-agents', async () => {
-  return [
-    { id: '1', name: 'Assistant', status: 'active', avatar: '🤖', unread: 0 },
-    { id: '2', name: 'Researcher', status: 'idle', avatar: '📚', unread: 2 },
-    { id: '3', name: 'Coder', status: 'active', avatar: '💻', unread: 0 },
-  ];
+  const agents = agentBus.getAllAgents();
+  return agents.map((agent) => ({
+    id: agent.id,
+    name: agent.name,
+    status: agent.status,
+    avatar: agent.avatar,
+    unread: 0,
+  }));
+});
+
+ipcMain.handle('list-providers', async () => {
+  return await agentBus.getAllProviders();
+});
+
+ipcMain.handle('set-default-provider', async (_event, providerId: string) => {
+  agentBus.setDefaultProvider(providerId);
+  return { success: true };
+});
+
+ipcMain.handle('get-default-provider', async () => {
+  return agentBus.getDefaultProviderId();
+});
+
+ipcMain.handle('update-agent-provider', async (_event, agentId: string, providerId: string) => {
+  agentBus.updateAgentProvider(agentId, providerId);
+  return { success: true };
 });

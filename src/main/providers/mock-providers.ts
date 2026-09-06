@@ -2,7 +2,7 @@ import type { AgentProvider } from '../agent-bus';
 
 export class MockEchoProvider implements AgentProvider {
   readonly id = 'mock-echo';
-  readonly name = 'Mock Echo Provider';
+  readonly name = 'Mock Echo';
 
   private shortBeats = ['Got it.', 'On it.', 'Done.', 'Sure.', 'Noted.'];
 
@@ -18,7 +18,7 @@ export class MockEchoProvider implements AgentProvider {
 
 export class MockIntelligentProvider implements AgentProvider {
   readonly id = 'mock-intelligent';
-  readonly name = 'Mock Intelligent Provider';
+  readonly name = 'Mock Intelligent';
 
   private shortResponses = [
     'Done',

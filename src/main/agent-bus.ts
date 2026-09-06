@@ -19,40 +19,57 @@ export interface AgentBusConfig {
   defaultProviderId?: string;
 }
 
+export interface AgentDescriptor {
+  id: string;
+  name: string;
+  providerId: string;
+  avatar: string;
+  status: 'active' | 'idle' | 'offline';
+}
+
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  hasSecret: boolean;
+  isAvailable: boolean;
+}
+
 export class AgentBus {
   private providers: Map<string, AgentProvider>;
   private defaultProviderId?: string;
+  private agents: Map<string, AgentDescriptor>;
 
   constructor(config: AgentBusConfig) {
     this.providers = new Map(config.providers.map((p) => [p.id, p]));
     this.defaultProviderId = config.defaultProviderId;
+    this.agents = new Map();
   }
 
   async sendMessage(
     message: string,
-    providerId?: string,
+    agentId: string,
     context?: Record<string, unknown>
   ): Promise<AgentBusMessage> {
-    const targetProviderId = providerId || this.defaultProviderId;
-    if (!targetProviderId) {
-      throw new Error('No provider specified and no default provider set');
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      throw new Error(`Agent not found: ${agentId}`);
     }
 
-    const provider = this.providers.get(targetProviderId);
+    const provider = this.providers.get(agent.providerId);
     if (!provider) {
-      throw new Error(`Provider not found: ${targetProviderId}`);
+      throw new Error(`Provider not found for agent: ${agent.providerId}`);
     }
 
     const isAvailable = await provider.isAvailable();
     if (!isAvailable) {
-      throw new Error(`Provider not available: ${targetProviderId}`);
+      throw new Error(`Provider not available: ${agent.providerId}`);
     }
 
     const response = await provider.sendMessage(message, context);
 
     return {
       id: Date.now().toString(),
-      providerId: targetProviderId,
+      providerId: agent.providerId,
       content: response,
       role: 'assistant',
       timestamp: Date.now(),
@@ -64,8 +81,17 @@ export class AgentBus {
     return this.providers.get(providerId);
   }
 
-  getAllProviders(): AgentProvider[] {
-    return Array.from(this.providers.values());
+  async getAllProviders(): Promise<ProviderInfo[]> {
+    const infos: ProviderInfo[] = [];
+    for (const provider of this.providers.values()) {
+      infos.push({
+        id: provider.id,
+        name: provider.name,
+        hasSecret: this.providerHasSecret(provider.id),
+        isAvailable: await provider.isAvailable(),
+      });
+    }
+    return infos;
   }
 
   registerProvider(provider: AgentProvider): void {
@@ -74,5 +100,55 @@ export class AgentBus {
 
   unregisterProvider(providerId: string): boolean {
     return this.providers.delete(providerId);
+  }
+
+  setDefaultProvider(providerId: string): void {
+    if (!this.providers.has(providerId)) {
+      throw new Error(`Provider not found: ${providerId}`);
+    }
+    this.defaultProviderId = providerId;
+  }
+
+  getDefaultProviderId(): string | undefined {
+    return this.defaultProviderId;
+  }
+
+  registerAgent(agent: AgentDescriptor): void {
+    this.agents.set(agent.id, agent);
+  }
+
+  unregisterAgent(agentId: string): boolean {
+    return this.agents.delete(agentId);
+  }
+
+  getAgent(agentId: string): AgentDescriptor | undefined {
+    return this.agents.get(agentId);
+  }
+
+  getAllAgents(): AgentDescriptor[] {
+    return Array.from(this.agents.values());
+  }
+
+  updateAgentProvider(agentId: string, providerId: string): void {
+    const agent = this.agents.get(agentId);
+    if (!agent) {
+      throw new Error(`Agent not found: ${agentId}`);
+    }
+    if (!this.providers.has(providerId)) {
+      throw new Error(`Provider not found: ${providerId}`);
+    }
+    agent.providerId = providerId;
+  }
+
+  private providerHasSecret(providerId: string): boolean {
+    const provider = this.providers.get(providerId);
+    if (!provider) return false;
+    
+    if (providerId === 'minimax') {
+      const { hasProviderSecret } = require('./secrets');
+      return hasProviderSecret('minimax', 'apiKey') && hasProviderSecret('minimax', 'groupId');
+    }
+    
+    return false;
   }
 }

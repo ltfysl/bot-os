@@ -19,12 +19,23 @@ export interface Agent {
   unread?: number;
 }
 
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  hasSecret: boolean;
+  isAvailable: boolean;
+}
+
 declare global {
   interface Window {
     electronAPI: {
-      sendMessage: (message: string) => Promise<Message>;
+      sendMessage: (agentId: string, message: string) => Promise<Message>;
       getChannels: () => Promise<Channel[]>;
       getAgents: () => Promise<Agent[]>;
+      listProviders: () => Promise<ProviderInfo[]>;
+      setDefaultProvider: (providerId: string) => Promise<{ success: boolean }>;
+      getDefaultProvider: () => Promise<string | undefined>;
+      updateAgentProvider: (agentId: string, providerId: string) => Promise<{ success: boolean }>;
     };
   }
 }
