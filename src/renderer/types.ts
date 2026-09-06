@@ -65,6 +65,24 @@ export interface ClearSecretResult {
   error?: string;
 }
 
+export interface Room {
+  id: string;
+  name: string;
+  memberAgentIds: string[];
+  unread?: number;
+}
+
+export interface RoomMessage {
+  id: string;
+  roomId: string;
+  content: string;
+  role: 'user' | 'assistant';
+  timestamp: number;
+  agentId?: string;
+  agentName?: string;
+  agentAvatar?: string;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -83,6 +101,15 @@ declare global {
       deleteRoutine: (id: string) => Promise<boolean>;
       setProviderSecret: (providerId: string, secretName: string, value: string) => Promise<SetSecretResult>;
       clearProviderSecret: (providerId: string, secretName: string) => Promise<ClearSecretResult>;
+      listRooms: () => Promise<Room[]>;
+      createRoom: (name: string, memberAgentIds: string[]) => Promise<Room>;
+      getRoom: (roomId: string) => Promise<Room | undefined>;
+      updateRoom: (roomId: string, updates: Partial<Omit<Room, 'id'>>) => Promise<Room | undefined>;
+      deleteRoom: (roomId: string) => Promise<boolean>;
+      getRoomMessages: (roomId: string) => Promise<RoomMessage[]>;
+      sendRoomMessage: (roomId: string, content: string, senderId?: string) => Promise<RoomMessage>;
+      clearRoomUnread: (roomId: string) => Promise<{ success: boolean }>;
+      onRoomFanInResponse: (callback: (message: RoomMessage) => void) => (() => void);
     };
   }
 }
