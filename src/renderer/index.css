@@ -1188,9 +1188,10 @@ code, .path {
 
 .empty-room {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   height: 100%;
+  padding-bottom: 48px;
   color: var(--text-muted);
   font-size: 14px;
 }
