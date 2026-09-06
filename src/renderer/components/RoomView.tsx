@@ -12,6 +12,7 @@ interface RoomViewProps {
 export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) {
   const [messages, setMessages] = useState<RoomMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingTimeoutId, setLoadingTimeoutId] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     loadMessages();
@@ -23,12 +24,16 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
       if (message.roomId === room.id) {
         setMessages((prev) => [...prev, message]);
         setIsLoading(false);
+        if (loadingTimeoutId) {
+          clearTimeout(loadingTimeoutId);
+          setLoadingTimeoutId(undefined);
+        }
       } else {
         onRoomUpdate?.();
       }
     });
     return () => unsubscribe();
-  }, [room.id, onRoomUpdate]);
+  }, [room.id, onRoomUpdate, loadingTimeoutId]);
 
   const loadMessages = async () => {
     const roomMessages = await window.electronAPI.getRoomMessages(room.id);
@@ -54,8 +59,17 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
 
     setMessages((prev) => [...prev, userMessage]);
     
-    const hasMentions = content.includes('@');
-    setIsLoading(hasMentions);
+    const mentionedAgents = extractMentions(content);
+    const willWakeAgents = mentionedAgents.length > 0;
+    setIsLoading(willWakeAgents);
+    
+    if (willWakeAgents) {
+      const timeoutId = window.setTimeout(() => {
+        setIsLoading(false);
+        setLoadingTimeoutId(undefined);
+      }, 30000);
+      setLoadingTimeoutId(timeoutId);
+    }
 
     try {
       const response = await window.electronAPI.sendRoomMessage(
@@ -66,6 +80,10 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
       setMessages((prev) => 
         prev.map((msg) => msg.id === optimisticId ? response : msg)
       );
+      
+      if (!willWakeAgents) {
+        setIsLoading(false);
+      }
     } catch (error) {
       console.error('Failed to send room message:', error);
       const errorMessage: RoomMessage = {
@@ -77,7 +95,28 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
       };
       setMessages((prev) => [...prev, errorMessage]);
       setIsLoading(false);
+      if (loadingTimeoutId) {
+        clearTimeout(loadingTimeoutId);
+        setLoadingTimeoutId(undefined);
+      }
     }
+  };
+
+  const extractMentions = (message: string): string[] => {
+    const mentionPattern = /@(\w+)/g;
+    const matches = Array.from(message.matchAll(mentionPattern));
+    const mentionedNames = matches.map((m) => m[1].toLowerCase());
+
+    const memberAgentIds: string[] = [];
+    const memberAgents = agents.filter((a) => room.memberAgentIds.includes(a.id));
+    
+    for (const agent of memberAgents) {
+      if (mentionedNames.includes(agent.name.toLowerCase())) {
+        memberAgentIds.push(agent.id);
+      }
+    }
+    
+    return memberAgentIds;
   };
 
   const memberAgents = agents.filter((a) => room.memberAgentIds.includes(a.id));
