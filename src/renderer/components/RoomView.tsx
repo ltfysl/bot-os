@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
 import type { Room, RoomMessage, Message } from '../types';
