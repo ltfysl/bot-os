@@ -74,8 +74,8 @@ ipcMain.handle('get-channels', async () => {
 
 ipcMain.handle('get-agents', async () => {
   return [
-    { id: '1', name: 'Assistant', status: 'active', avatar: '🤖' },
-    { id: '2', name: 'Researcher', status: 'idle', avatar: '📚' },
-    { id: '3', name: 'Coder', status: 'active', avatar: '💻' },
+    { id: '1', name: 'Assistant', status: 'active', avatar: '🤖', unread: 0 },
+    { id: '2', name: 'Researcher', status: 'idle', avatar: '📚', unread: 2 },
+    { id: '3', name: 'Coder', status: 'active', avatar: '💻', unread: 0 },
   ];
 });

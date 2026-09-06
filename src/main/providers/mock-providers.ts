@@ -5,8 +5,8 @@ export class MockEchoProvider implements AgentProvider {
   readonly name = 'Mock Echo Provider';
 
   async sendMessage(message: string): Promise<string> {
-    await new Promise((resolve) => setTimeout(resolve, 500 + Math.random() * 1000));
-    return `Echo: ${message}`;
+    await new Promise((resolve) => setTimeout(resolve, 400 + Math.random() * 600));
+    return `Got it: ${message}`;
   }
 
   async isAvailable(): Promise<boolean> {
@@ -18,23 +18,42 @@ export class MockIntelligentProvider implements AgentProvider {
   readonly id = 'mock-intelligent';
   readonly name = 'Mock Intelligent Provider';
 
-  private responses = [
-    "That's an interesting question. Let me think about that...",
-    'I understand what you mean. Here are my thoughts:',
-    "Great point! I'd like to add:",
-    "That's a complex topic. Here's my perspective:",
-    'Absolutely! Let me elaborate on that.',
+  private shortResponses = [
+    'Done',
+    'On it',
+    'Makes sense',
+    'Got it',
+    'Sure thing',
+    'Let me check that',
+    'Interesting approach',
+    'That works',
+    'Quick question first',
+    'Almost there',
+  ];
+
+  private mediumResponses = [
+    'Updated the `config.ts` file.\n\nAnything else?',
+    'Checked the logs — no errors.\n\nLooks clean.',
+    'Found three matches in `src/`.\n\nWhich one?',
+    'Ran the tests. All passing.\n\nReady to deploy?',
+    'That pattern appears in `utils/helpers.ts`.\n\nWant me to refactor it?',
+    'Traced the issue to line 42.\n\nShould I fix it?',
+    'Created the file at `src/components/Button.tsx`.\n\nCheck it out.',
+    'Pushed to branch `feature/auth`.\n\nPR ready.',
+    'Database migrated successfully.\n\nNo conflicts.',
+    'Deployed to staging at `app.staging.dev`.\n\nTest away.',
   ];
 
   async sendMessage(message: string): Promise<string> {
-    await new Promise((resolve) => setTimeout(resolve, 800 + Math.random() * 1200));
+    await new Promise((resolve) => setTimeout(resolve, 500 + Math.random() * 800));
     
-    const randomResponse =
-      this.responses[Math.floor(Math.random() * this.responses.length)];
+    const roll = Math.random();
     
-    return `${randomResponse}\n\nRegarding "${message.slice(0, 50)}${
-      message.length > 50 ? '...' : ''
-    }", I think this is a valuable discussion point worth exploring further.`;
+    if (roll < 0.3) {
+      return this.shortResponses[Math.floor(Math.random() * this.shortResponses.length)];
+    } else {
+      return this.mediumResponses[Math.floor(Math.random() * this.mediumResponses.length)];
+    }
   }
 
   async isAvailable(): Promise<boolean> {

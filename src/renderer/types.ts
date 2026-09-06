@@ -16,6 +16,7 @@ export interface Agent {
   name: string;
   status: 'active' | 'idle' | 'offline';
   avatar: string;
+  unread?: number;
 }
 
 declare global {

@@ -40,7 +40,7 @@ export default function MessageComposer({
         <textarea
           ref={textareaRef}
           className="compose-input"
-          placeholder="Type a message... (Shift+Enter for new line)"
+          placeholder="Message..."
           value={message}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
@@ -48,6 +48,9 @@ export default function MessageComposer({
           rows={1}
         />
         <div className="compose-actions">
+          <button className="compose-attach" title="Attach file">
+            📎
+          </button>
           <button
             className="compose-send"
             onClick={handleSend}

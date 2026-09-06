@@ -1,22 +1,54 @@
 import { useState, useEffect } from 'react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
-import type { Channel, Message } from '../types';
+import type { Agent, Message } from '../types';
 
 interface ChatViewProps {
-  channel?: Channel;
+  agent?: Agent;
 }
 
-export default function ChatView({ channel }: ChatViewProps) {
+export default function ChatView({ agent }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    setMessages([]);
-  }, [channel?.id]);
+    if (agent) {
+      loadSeedMessages(agent.id);
+    }
+  }, [agent?.id]);
+
+  const loadSeedMessages = (agentId: string) => {
+    const seedsByAgent: Record<string, Message[]> = {
+      '1': [
+        {
+          id: 's1',
+          content: 'Ready when you are',
+          role: 'assistant',
+          timestamp: Date.now() - 120000,
+        },
+      ],
+      '2': [
+        {
+          id: 's2',
+          content: 'What are we researching today?',
+          role: 'assistant',
+          timestamp: Date.now() - 90000,
+        },
+      ],
+      '3': [
+        {
+          id: 's3',
+          content: 'Standing by for code work',
+          role: 'assistant',
+          timestamp: Date.now() - 60000,
+        },
+      ],
+    };
+    setMessages(seedsByAgent[agentId] || []);
+  };
 
   const handleSendMessage = async (content: string) => {
-    if (!content.trim() || isLoading) return;
+    if (!content.trim() || isLoading || !agent) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -38,14 +70,14 @@ export default function ChatView({ channel }: ChatViewProps) {
     }
   };
 
-  if (!channel) {
+  if (!agent) {
     return (
       <div className="main-content">
         <div className="empty-state">
-          <div className="empty-icon">💬</div>
-          <div className="empty-title">No Channel Selected</div>
+          <div className="empty-icon">🤖</div>
+          <div className="empty-title">No Agent Selected</div>
           <div className="empty-description">
-            Select a channel from the sidebar to start chatting
+            Select an agent from the sidebar
           </div>
         </div>
       </div>
@@ -55,9 +87,8 @@ export default function ChatView({ channel }: ChatViewProps) {
   return (
     <div className="main-content">
       <div className="chat-header">
-        <span className="channel-icon">{channel.icon}</span>
-        <span className="chat-title">{channel.name}</span>
-        <span className="chat-subtitle">{messages.length} messages</span>
+        <span className="chat-title">{agent.name}</span>
+        <span className="chat-subtitle">{agent.status}</span>
       </div>
       <div className="chat-container">
         <MessageList messages={messages} isLoading={isLoading} />

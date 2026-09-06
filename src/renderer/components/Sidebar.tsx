@@ -1,32 +1,38 @@
-import type { Channel } from '../types';
+import type { Agent } from '../types';
 
 interface SidebarProps {
-  channels: Channel[];
-  activeChannelId: string;
-  onChannelSelect: (channelId: string) => void;
+  agents: Agent[];
+  activeAgentId: string;
+  onAgentSelect: (agentId: string) => void;
 }
 
 export default function Sidebar({
-  channels,
-  activeChannelId,
-  onChannelSelect,
+  agents,
+  activeAgentId,
+  onAgentSelect,
 }: SidebarProps) {
   return (
     <div className="sidebar">
       <div className="sidebar-header">
-        <h1 className="sidebar-title">BotOS</h1>
+        <div className="sidebar-logo">B</div>
       </div>
-      <div className="channels">
-        {channels.map((channel) => (
+      <div className="agents-rail">
+        {agents.map((agent) => (
           <button
-            key={channel.id}
-            className={`channel-item ${
-              channel.id === activeChannelId ? 'active' : ''
+            key={agent.id}
+            className={`agent-rail-item ${
+              agent.id === activeAgentId ? 'active' : ''
             }`}
-            onClick={() => onChannelSelect(channel.id)}
+            onClick={() => onAgentSelect(agent.id)}
           >
-            <span className="channel-icon">{channel.icon}</span>
-            <span>{channel.name}</span>
+            <div className="agent-rail-avatar">
+              {agent.avatar}
+              <div className={`agent-rail-status ${agent.status}`} />
+            </div>
+            <div className="agent-rail-name">{agent.name}</div>
+            {agent.unread && agent.unread > 0 && (
+              <div className="agent-rail-unread">{agent.unread}</div>
+            )}
           </button>
         ))}
       </div>
