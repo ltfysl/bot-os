@@ -53,23 +53,19 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
     };
 
     setMessages((prev) => [...prev, userMessage]);
-    setIsLoading(true);
+    
+    const hasMentions = content.includes('@');
+    setIsLoading(hasMentions);
 
     try {
-      const defaultAgentId = room.memberAgentIds[0];
       const response = await window.electronAPI.sendRoomMessage(
         room.id, 
-        content, 
-        defaultAgentId
+        content
       );
       
       setMessages((prev) => 
         prev.map((msg) => msg.id === optimisticId ? response : msg)
       );
-
-      if (!content.includes('@')) {
-        setIsLoading(true);
-      }
     } catch (error) {
       console.error('Failed to send room message:', error);
       const errorMessage: RoomMessage = {
