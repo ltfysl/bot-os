@@ -29,25 +29,26 @@ Rooms enable multi-agent coordination. Users send messages to a room, and can @-
 - Screenshot: `room-create.png`
 - Screenshot: `room-header.png`
 
-### Path 2: Basic Room Messaging
+### Path 2: Basic Room Messaging (No Wake)
 
-**When to verify:** Changes to RoomView, room message routing, or agent-bus fan-out
+**When to verify:** Changes to RoomView, room message routing, or wake-only behavior
 
 **Steps:**
 1. Open a room with 2+ members
-2. Send a message without @-mentions
+2. Send a message without @-mentions (e.g., "Hello everyone")
 3. Verify user message appears
-4. Wait for response
-5. Observe single assistant response (no wake)
+4. Observe NO assistant responses
+5. Verify NO "Thinking..." indicator
 
 **Expected behavior:**
 - User message shows immediately
-- One assistant response appears
-- Response comes from one of the room's member agents
-- No "Thinking..." indicator (non-wake messages are fast)
+- NO assistant responses (only @-mentions wake agents)
+- NO loading indicator
+- Message persists in room transcript
+- Composer clears and refocuses
 
 **Evidence:**
-- Screenshot: `room-basic-message.png`
+- Screenshot: `room-bare-send-no-response.png`
 
 ### Path 3: @-Mention Wake
 
@@ -58,12 +59,12 @@ Rooms enable multi-agent coordination. Users send messages to a room, and can @-
 2. Send message: "Hey @Dash and @Research, what do you think?"
 3. Observe "Thinking..." indicator appears
 4. Wait for responses (up to 30s timeout)
-5. Verify 2-3 responses appear (primary + woken agents)
+5. Verify 2 responses appear (one from each @-mentioned agent)
 6. Each response shows different agent name/avatar
 
 **Expected behavior:**
 - "Thinking..." indicator visible after send
-- Primary response arrives first
+- Only @-mentioned agents respond (Dash and Research in this example)
 - Wake responses arrive within 5 seconds
 - Each response tagged with correct agent name/avatar
 - Loading indicator clears after all responses received
@@ -144,9 +145,8 @@ Rooms enable multi-agent coordination. Users send messages to a room, and can @-
 If you've changed code outside rooms but want to verify rooms still work:
 
 - [ ] Open one room
-- [ ] Send one message without @-mention
-- [ ] Send one message with @-mention
-- [ ] Verify responses arrive
+- [ ] Send one message without @-mention (verify NO response)
+- [ ] Send one message with @-mention (verify response from mentioned agent)
 - [ ] Check console for errors
 
 ## Related Components
