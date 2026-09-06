@@ -107,6 +107,12 @@ app.on('window-all-closed', () => {
   }
 });
 
+app.on('before-quit', () => {
+  if (routineManager) {
+    routineManager.stopScheduler();
+  }
+});
+
 ipcMain.handle('send-message', async (event, agentId: string, message: string) => {
   const primary = await agentBus.sendMessageWithWake(
     message,

@@ -31,13 +31,11 @@ export class RoutineManager {
   private routines: Map<string, Routine>;
   private schedulerInterval: NodeJS.Timeout | null;
   private fireCallback: RoutineFireCallback;
-  private lastScheduleCheck: Map<string, Date>;
 
   constructor(fireCallback: RoutineFireCallback) {
     this.routines = new Map();
     this.schedulerInterval = null;
     this.fireCallback = fireCallback;
-    this.lastScheduleCheck = new Map();
     this.loadRoutines();
   }
 
@@ -79,13 +77,22 @@ export class RoutineManager {
   }
 
   createRoutine(input: RoutineCreateInput): Routine {
+    if (!input.name || typeof input.name !== 'string' || input.name.trim() === '') {
+      throw new Error('Routine name is required and must be a non-empty string');
+    }
+    if (!input.prompt || typeof input.prompt !== 'string' || input.prompt.trim() === '') {
+      throw new Error('Routine prompt is required and must be a non-empty string');
+    }
+    if (!input.schedule || typeof input.schedule !== 'string' || input.schedule.trim() === '') {
+      throw new Error('Routine schedule is required and must be a non-empty string');
+    }
     this.validateSchedule(input.schedule);
     const id = Date.now().toString(36) + Math.random().toString(36).substring(2);
     const routine: Routine = {
       id,
-      name: input.name,
-      prompt: input.prompt,
-      schedule: input.schedule,
+      name: input.name.trim(),
+      prompt: input.prompt.trim(),
+      schedule: input.schedule.trim(),
       enabled: input.enabled !== false,
     };
     this.routines.set(id, routine);
@@ -98,14 +105,27 @@ export class RoutineManager {
     if (!routine) {
       throw new Error(`Routine not found: ${id}`);
     }
+    if (input.name !== undefined) {
+      if (typeof input.name !== 'string' || input.name.trim() === '') {
+        throw new Error('Routine name must be a non-empty string');
+      }
+    }
+    if (input.prompt !== undefined) {
+      if (typeof input.prompt !== 'string' || input.prompt.trim() === '') {
+        throw new Error('Routine prompt must be a non-empty string');
+      }
+    }
     if (input.schedule !== undefined) {
+      if (typeof input.schedule !== 'string' || input.schedule.trim() === '') {
+        throw new Error('Routine schedule must be a non-empty string');
+      }
       this.validateSchedule(input.schedule);
     }
     const updated: Routine = {
       ...routine,
-      ...(input.name !== undefined && { name: input.name }),
-      ...(input.prompt !== undefined && { prompt: input.prompt }),
-      ...(input.schedule !== undefined && { schedule: input.schedule }),
+      ...(input.name !== undefined && { name: input.name.trim() }),
+      ...(input.prompt !== undefined && { prompt: input.prompt.trim() }),
+      ...(input.schedule !== undefined && { schedule: input.schedule.trim() }),
       ...(input.enabled !== undefined && { enabled: input.enabled }),
     };
     this.routines.set(id, updated);
@@ -120,7 +140,6 @@ export class RoutineManager {
   deleteRoutine(id: string): boolean {
     const deleted = this.routines.delete(id);
     if (deleted) {
-      this.lastScheduleCheck.delete(id);
       this.saveRoutines();
     }
     return deleted;
@@ -149,23 +168,35 @@ export class RoutineManager {
       if (!routine.enabled) {
         continue;
       }
-      if (this.shouldFire(routine, now)) {
-        this.fireRoutine(routine, now);
+      try {
+        if (this.shouldFire(routine, now)) {
+          this.fireRoutine(routine, now);
+        }
+      } catch (err) {
+        console.error(`Failed to check schedule for routine ${routine.id} (${routine.name}):`, err);
       }
     }
   }
 
   private shouldFire(routine: Routine, now: Date): boolean {
-    const lastCheck = this.lastScheduleCheck.get(routine.id);
-    if (lastCheck) {
-      const minutesSinceLastCheck = (now.getTime() - lastCheck.getTime()) / 60000;
-      if (minutesSinceLastCheck < 1) {
+    if (routine.lastRun) {
+      const lastRunDate = new Date(routine.lastRun);
+      const currentMinuteSlot = this.getMinuteSlot(now);
+      const lastRunMinuteSlot = this.getMinuteSlot(lastRunDate);
+      if (currentMinuteSlot === lastRunMinuteSlot) {
         return false;
       }
     }
-    const matches = this.matchesSchedule(routine.schedule, now);
-    this.lastScheduleCheck.set(routine.id, now);
-    return matches;
+    return this.matchesSchedule(routine.schedule, now);
+  }
+
+  private getMinuteSlot(date: Date): string {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const day = date.getDate();
+    const hour = date.getHours();
+    const minute = date.getMinutes();
+    return `${year}-${month}-${day}-${hour}-${minute}`;
   }
 
   private matchesSchedule(schedule: string, now: Date): boolean {
@@ -203,21 +234,37 @@ export class RoutineManager {
     if (field.includes('/')) {
       const [range, step] = field.split('/');
       const stepValue = parseInt(step, 10);
+      if (isNaN(stepValue) || stepValue <= 0) {
+        throw new Error(`Invalid step value in cron field: ${field}`);
+      }
       if (range === '*') {
         return value % stepValue === 0;
       }
       const [start] = range.split('-').map((n) => parseInt(n, 10));
+      if (isNaN(start)) {
+        throw new Error(`Invalid range start in cron field: ${field}`);
+      }
       return value >= start && (value - start) % stepValue === 0;
     }
     if (field.includes('-')) {
       const [start, end] = field.split('-').map((n) => parseInt(n, 10));
+      if (isNaN(start) || isNaN(end)) {
+        throw new Error(`Invalid range in cron field: ${field}`);
+      }
       return value >= start && value <= end;
     }
     if (field.includes(',')) {
       const values = field.split(',').map((n) => parseInt(n, 10));
+      if (values.some((v) => isNaN(v))) {
+        throw new Error(`Invalid list in cron field: ${field}`);
+      }
       return values.includes(value);
     }
-    return parseInt(field, 10) === value;
+    const fieldValue = parseInt(field, 10);
+    if (isNaN(fieldValue)) {
+      throw new Error(`Invalid value in cron field: ${field}`);
+    }
+    return fieldValue === value;
   }
 
   private matchesWeekdayTime(
@@ -251,16 +298,87 @@ export class RoutineManager {
   }
 
   private validateSchedule(schedule: string): void {
-    const parts = schedule.trim().split(/\s+/);
+    const trimmed = schedule.trim();
+    const parts = trimmed.split(/\s+/);
     if (parts.length === 5) {
+      this.validateCronSchedule(parts);
       return;
     }
     const weekdayTimePattern = /^(mon|tue|wed|thu|fri|sat|sun)\s+(\d{1,2}):(\d{2})$/i;
-    if (weekdayTimePattern.test(schedule)) {
+    const match = trimmed.match(weekdayTimePattern);
+    if (match) {
+      const hour = parseInt(match[2], 10);
+      const minute = parseInt(match[3], 10);
+      if (hour < 0 || hour > 23) {
+        throw new Error(`Invalid hour in weekday time schedule: ${hour}. Must be 0-23.`);
+      }
+      if (minute < 0 || minute > 59) {
+        throw new Error(`Invalid minute in weekday time schedule: ${minute}. Must be 0-59.`);
+      }
       return;
     }
     throw new Error(
       'Invalid schedule format. Use 5-field cron (e.g., "0 9 * * 1-5") or weekday time (e.g., "Mon 09:00")'
     );
+  }
+
+  private validateCronSchedule(parts: string[]): void {
+    this.validateCronField(parts[0], 0, 59, 'minute');
+    this.validateCronField(parts[1], 0, 23, 'hour');
+    this.validateCronField(parts[2], 1, 31, 'day of month');
+    this.validateCronField(parts[3], 1, 12, 'month');
+    this.validateCronField(parts[4], 0, 6, 'day of week');
+  }
+
+  private validateCronField(field: string, min: number, max: number, fieldName: string): void {
+    if (field === '*') {
+      return;
+    }
+    if (field.includes('/')) {
+      const [range, step] = field.split('/');
+      const stepValue = parseInt(step, 10);
+      if (isNaN(stepValue) || stepValue <= 0) {
+        throw new Error(`Invalid step value in ${fieldName}: ${step}`);
+      }
+      if (range !== '*') {
+        if (range.includes('-')) {
+          const [start, end] = range.split('-');
+          this.validateCronValue(start, min, max, fieldName);
+          this.validateCronValue(end, min, max, fieldName);
+        } else {
+          this.validateCronValue(range, min, max, fieldName);
+        }
+      }
+      return;
+    }
+    if (field.includes('-')) {
+      const [start, end] = field.split('-');
+      this.validateCronValue(start, min, max, fieldName);
+      this.validateCronValue(end, min, max, fieldName);
+      const startVal = parseInt(start, 10);
+      const endVal = parseInt(end, 10);
+      if (startVal > endVal) {
+        throw new Error(`Invalid range in ${fieldName}: start ${startVal} > end ${endVal}`);
+      }
+      return;
+    }
+    if (field.includes(',')) {
+      const values = field.split(',');
+      for (const val of values) {
+        this.validateCronValue(val, min, max, fieldName);
+      }
+      return;
+    }
+    this.validateCronValue(field, min, max, fieldName);
+  }
+
+  private validateCronValue(value: string, min: number, max: number, fieldName: string): void {
+    const num = parseInt(value, 10);
+    if (isNaN(num)) {
+      throw new Error(`Invalid ${fieldName} value: ${value} (not a number)`);
+    }
+    if (num < min || num > max) {
+      throw new Error(`Invalid ${fieldName} value: ${num}. Must be between ${min} and ${max}.`);
+    }
   }
 }
