@@ -4,6 +4,7 @@ import { AgentBus } from './agent-bus';
 import { MockEchoProvider, MockIntelligentProvider } from './providers/mock-providers';
 import { MiniMaxProvider } from './providers/minimax-provider';
 import { ZaiProvider } from './providers/zai-provider';
+import { CodingPlanProvider } from './providers/coding-plan-provider';
 import { RoutineManager, Routine, RoutineCreateInput, RoutineUpdateInput } from './routines';
 import { setProviderSecret, clearProviderSecret } from './secrets';
 import { RoomManager, Room } from './rooms';
@@ -47,6 +48,7 @@ app.whenReady().then(() => {
       new MockIntelligentProvider(),
       new MiniMaxProvider(),
       new ZaiProvider(),
+      new CodingPlanProvider(),
     ],
     defaultProviderId: 'mock-intelligent',
   });
