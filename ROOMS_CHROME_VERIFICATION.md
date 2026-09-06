@@ -64,7 +64,7 @@ This document verifies the complete implementation of BotOS channel rooms chrome
   - Without `senderId` and without @-mentions: only persists user message, no agent wake
   - With `senderId`: specified agent wakes and responds
   - With @-mentions: mentioned agents wake in parallel
-  - **RoomView default:** passes first room member as `senderId` for bare sends
+  - **Nyx feel:** RoomView uses @-mention-only wake (no senderId passed)
 - [x] `onRoomFanInResponse(callback)` - Subscribe to fan-in
 - [x] `clearRoomUnread(roomId)` - Clear unread on focus
 
@@ -146,20 +146,22 @@ npx tsc --noEmit
 **User sends message (bare, no @-mention):**
 1. Input captured in MessageComposer
 2. Optimistic user message added to state
-3. `sendRoomMessage(roomId, content, senderId)` called with first member as senderId
+3. `sendRoomMessage(roomId, content)` called without senderId
 4. IPC persists user message and returns it
 5. Optimistic message ID replaced with server ID
-6. Agent (first member) wakes and responds
-7. Response received via `onRoomFanInResponse`
-8. Agent reply added to state with agentName/agentAvatar
+6. No agent wake (Nyx feel: @-mention only)
+7. Message available for future context
 
-**Fan-in flow (@-mentions):**
-1. User message contains @-mention (e.g., "@Researcher")
-2. IPC extracts mentions from room.memberAgentIds
-3. Mentioned agents wake via AgentBus
-4. Responses stream via `room-fan-in-response` event
-5. RoomView receives via `onRoomFanInResponse()`
-6. Each response shows agent name + avatar
+**User sends with @-mention:**
+1. Input captured in MessageComposer
+2. Optimistic user message added to state
+3. `sendRoomMessage(roomId, content)` called
+4. IPC persists user message and extracts @-mentions
+5. Mentioned agents wake in parallel
+6. Responses stream via `room-fan-in-response` event
+7. RoomView receives via `onRoomFanInResponse()`
+8. Each response shows agent name + avatar
+9. Loading indicator active during fan-in
 
 ### 6. Visual Verification
 
@@ -202,21 +204,21 @@ npx tsc --noEmit
 
 **Actual:** ✅ Works as expected
 
-### Scenario 2: Send Message
+### Scenario 2: Send Message (Bare)
 
 **Steps:**
-1. In "Team Chat", type "Hello everyone"
-2. Press Enter or click Send
+1. In "Team Chat", type "Hello everyone" (no @-mention)
+2. Press Enter or Click Send
 
 **Expected:**
 - User message appears immediately
 - "You" shown as author
-- First room member (Assistant) responds
-- Agent name + avatar shown in reply
+- No agent response (no wake without @-mention)
+- Message persists for later @-mention context
 
 **Actual:** ✅ Works as expected
 
-**Note:** Bare sends (without @-mention) wake the first room member by default. This follows the IPC contract where `senderId` determines which agent responds.
+**Note:** Bare sends (without @-mention) only persist the user message. Use @-mention to wake specific agents.
 
 ### Scenario 3: Fan-in (@-mention)
 
