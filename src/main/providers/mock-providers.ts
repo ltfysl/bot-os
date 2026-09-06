@@ -4,9 +4,11 @@ export class MockEchoProvider implements AgentProvider {
   readonly id = 'mock-echo';
   readonly name = 'Mock Echo Provider';
 
-  async sendMessage(message: string): Promise<string> {
+  private shortBeats = ['Got it.', 'On it.', 'Done.', 'Sure.', 'Noted.'];
+
+  async sendMessage(_message: string): Promise<string> {
     await new Promise((resolve) => setTimeout(resolve, 400 + Math.random() * 600));
-    return `Got it: ${message}`;
+    return this.shortBeats[Math.floor(Math.random() * this.shortBeats.length)];
   }
 
   async isAvailable(): Promise<boolean> {

@@ -230,6 +230,12 @@ code, .path {
   justify-content: center;
 }
 
+@media (max-width: 600px) {
+  .agent-rail-name {
+    display: none;
+  }
+}
+
 /* MAIN CONTENT */
 .main-content {
   flex: 1;
@@ -342,6 +348,9 @@ code, .path {
   color: var(--text-primary);
   word-wrap: break-word;
   white-space: pre-wrap;
+  background: var(--bg-message);
+  padding: 8px 12px;
+  border-radius: 8px;
 }
 
 .message.user .message-text {
@@ -425,7 +434,7 @@ code, .path {
 }
 
 .compose-send:hover {
-  background: var(--accent-hover);
+  background: #7c3aed;
 }
 
 .compose-send:disabled {

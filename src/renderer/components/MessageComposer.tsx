@@ -11,6 +11,7 @@ export default function MessageComposer({
 }: MessageComposerProps) {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSend = () => {
     if (!message.trim() || disabled) return;
@@ -34,6 +35,22 @@ export default function MessageComposer({
     e.target.style.height = `${e.target.scrollHeight}px`;
   };
 
+  const handleAttachClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      // Noop for now - file attachments not implemented
+      console.log('File selected (not yet implemented):', files[0].name);
+    }
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   return (
     <div className="compose-container">
       <div className="compose-wrapper">
@@ -48,7 +65,17 @@ export default function MessageComposer({
           rows={1}
         />
         <div className="compose-actions">
-          <button className="compose-attach" title="Attach file">
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleFileChange}
+            style={{ display: 'none' }}
+          />
+          <button
+            className="compose-attach"
+            title="Attach file"
+            onClick={handleAttachClick}
+          >
             📎
           </button>
           <button
