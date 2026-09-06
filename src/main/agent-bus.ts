@@ -138,7 +138,7 @@ export class AgentBus {
     if (!this.providers.has(providerId)) {
       throw new Error(`Provider not found: ${providerId}`);
     }
-    agent.providerId = providerId;
+    this.agents.set(agentId, { ...agent, providerId });
   }
 
   private providerHasSecret(providerId: string): boolean {

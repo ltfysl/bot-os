@@ -62,7 +62,7 @@ export default function Sidebar({
               disabled={!provider.isAvailable}
             >
               <span>{provider.name}</span>
-              {!provider.hasSecret && <span className="no-secret">🔒</span>}
+              {!provider.isAvailable && <span className="no-secret">🔒</span>}
             </button>
           ))}
         </div>
