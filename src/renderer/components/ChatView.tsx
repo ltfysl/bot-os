@@ -6,9 +6,10 @@ import type { Agent, Message, ProviderInfo } from '../types';
 interface ChatViewProps {
   agent?: Agent;
   onAgentsChange: () => void;
+  style?: React.CSSProperties;
 }
 
-export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
+export default function ChatView({ agent, onAgentsChange, style }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
@@ -130,7 +131,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
 
   if (!agent) {
     return (
-      <div className="main-content">
+      <div className="main-content" style={style}>
         <div className="empty-state">
           <div className="empty-icon">🤖</div>
           <div className="empty-title">No Agent Selected</div>
@@ -143,7 +144,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   }
 
   return (
-    <div className="main-content">
+    <div className="main-content" style={style}>
       <div className="chat-header">
         <span className="chat-title">{agent.name}</span>
         <span className="chat-subtitle">{agent.status}</span>
