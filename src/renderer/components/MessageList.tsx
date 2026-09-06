@@ -56,6 +56,7 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
 
   const lastAssistantMessage = messages.filter((m) => m.role === 'assistant').at(-1);
   const hasAssistantMessage = lastAssistantMessage !== undefined;
+  const useNeutralChrome = !hasAssistantMessage && !agentName && !agentAvatar;
 
   return (
     <div className="chat-messages">
@@ -91,16 +92,16 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
       {isLoading && (
         <div className="message assistant">
           <div className="message-avatar">
-            {hasAssistantMessage ? (lastAssistantMessage.agentAvatar || agentAvatar || '🤖') : '…'}
+            {useNeutralChrome ? '…' : (lastAssistantMessage?.agentAvatar || agentAvatar || '🤖')}
           </div>
           <div className="message-content">
             <div className="message-header">
               <span className="message-author">
-                {hasAssistantMessage ? (lastAssistantMessage.agentName || agentName || 'Assistant') : '…'}
+                {useNeutralChrome ? '…' : (lastAssistantMessage?.agentName || agentName || 'Assistant')}
               </span>
             </div>
             <div className="message-text" style={{ opacity: 0.5 }}>
-              {hasAssistantMessage ? 'Thinking...' : '…'}
+              {useNeutralChrome ? '…' : 'Thinking...'}
             </div>
           </div>
         </div>
