@@ -53,9 +53,11 @@ function App() {
       <div style={{ display: viewMode === 'chat' ? 'flex' : 'none', flex: 1, minWidth: 0 }}>
         <ChatView agent={activeAgent} onAgentsChange={loadAgents} />
       </div>
-      {viewMode === 'room' && activeRoom && (
-        <RoomView room={activeRoom} agents={agents} />
-      )}
+      <div style={{ display: viewMode === 'room' ? 'flex' : 'none', flex: 1, minWidth: 0 }}>
+        {activeRoom && (
+          <RoomView room={activeRoom} agents={agents} onRoomUpdate={loadRooms} />
+        )}
+      </div>
       {viewMode === 'routines' && (
         <RoutinesView onClose={() => setViewMode('chat')} />
       )}

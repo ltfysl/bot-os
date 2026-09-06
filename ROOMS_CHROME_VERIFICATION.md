@@ -61,6 +61,10 @@ This document verifies the complete implementation of BotOS channel rooms chrome
 - [x] `getRoom(roomId)` - Get room details
 - [x] `getRoomMessages(roomId)` - Load history
 - [x] `sendRoomMessage(roomId, content, senderId?)` - Send message
+  - Without `senderId` and without @-mentions: only persists user message, no agent wake
+  - With `senderId`: specified agent wakes and responds
+  - With @-mentions: mentioned agents wake in parallel
+  - **RoomView default:** passes first room member as `senderId` for bare sends
 - [x] `onRoomFanInResponse(callback)` - Subscribe to fan-in
 - [x] `clearRoomUnread(roomId)` - Clear unread on focus
 
@@ -134,17 +138,22 @@ npx tsc --noEmit
 - `messages` state from `getRoomMessages()`
 - Fan-in subscription via `onRoomFanInResponse()`
 - Clear unread on mount via `clearRoomUnread()`
+- Refresh rooms state after clear to update rail badges
+- Keep-mounted pattern (display:none) like ChatView
 
 ### 5. Message Flow
 
-**User sends message:**
+**User sends message (bare, no @-mention):**
 1. Input captured in MessageComposer
-2. User message added to state immediately
-3. `sendRoomMessage(roomId, content)` called
-4. Response received with attribution
-5. Agent reply added to state with agentName/agentAvatar
+2. Optimistic user message added to state
+3. `sendRoomMessage(roomId, content, senderId)` called with first member as senderId
+4. IPC persists user message and returns it
+5. Optimistic message ID replaced with server ID
+6. Agent (first member) wakes and responds
+7. Response received via `onRoomFanInResponse`
+8. Agent reply added to state with agentName/agentAvatar
 
-**Fan-in flow:**
+**Fan-in flow (@-mentions):**
 1. User message contains @-mention (e.g., "@Researcher")
 2. IPC extracts mentions from room.memberAgentIds
 3. Mentioned agents wake via AgentBus
@@ -202,10 +211,12 @@ npx tsc --noEmit
 **Expected:**
 - User message appears immediately
 - "You" shown as author
-- Agent responds (via default provider)
+- First room member (Assistant) responds
 - Agent name + avatar shown in reply
 
 **Actual:** ✅ Works as expected
+
+**Note:** Bare sends (without @-mention) wake the first room member by default. This follows the IPC contract where `senderId` determines which agent responds.
 
 ### Scenario 3: Fan-in (@-mention)
 

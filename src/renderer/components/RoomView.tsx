@@ -6,36 +6,46 @@ import type { Room, RoomMessage, Message } from '../types';
 interface RoomViewProps {
   room: Room;
   agents: Array<{ id: string; name: string; avatar: string }>;
+  onRoomUpdate?: () => void;
 }
 
-export default function RoomView({ room, agents }: RoomViewProps) {
+export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) {
   const [messages, setMessages] = useState<RoomMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     loadMessages();
-    window.electronAPI.clearRoomUnread(room.id);
+    clearUnread();
   }, [room.id]);
 
   useEffect(() => {
     const unsubscribe = window.electronAPI.onRoomFanInResponse((message: RoomMessage) => {
       if (message.roomId === room.id) {
         setMessages((prev) => [...prev, message]);
+        setIsLoading(false);
+      } else {
+        onRoomUpdate?.();
       }
     });
     return () => unsubscribe();
-  }, [room.id]);
+  }, [room.id, onRoomUpdate]);
 
   const loadMessages = async () => {
     const roomMessages = await window.electronAPI.getRoomMessages(room.id);
     setMessages(roomMessages);
   };
 
+  const clearUnread = async () => {
+    await window.electronAPI.clearRoomUnread(room.id);
+    onRoomUpdate?.();
+  };
+
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
 
+    const optimisticId = `${Date.now()}-optimistic`;
     const userMessage: RoomMessage = {
-      id: Date.now().toString(),
+      id: optimisticId,
       roomId: room.id,
       content,
       role: 'user',
@@ -46,8 +56,20 @@ export default function RoomView({ room, agents }: RoomViewProps) {
     setIsLoading(true);
 
     try {
-      const response = await window.electronAPI.sendRoomMessage(room.id, content);
-      setMessages((prev) => [...prev, response]);
+      const defaultAgentId = room.memberAgentIds[0];
+      const response = await window.electronAPI.sendRoomMessage(
+        room.id, 
+        content, 
+        defaultAgentId
+      );
+      
+      setMessages((prev) => 
+        prev.map((msg) => msg.id === optimisticId ? response : msg)
+      );
+
+      if (!content.includes('@')) {
+        setIsLoading(true);
+      }
     } catch (error) {
       console.error('Failed to send room message:', error);
       const errorMessage: RoomMessage = {
@@ -58,7 +80,6 @@ export default function RoomView({ room, agents }: RoomViewProps) {
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, errorMessage]);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -67,7 +88,7 @@ export default function RoomView({ room, agents }: RoomViewProps) {
   const displayedAvatars = memberAgents.slice(0, 4);
   const overflowCount = memberAgents.length - 4;
 
-  const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  const lastAssistantMessage = messages.slice().reverse().find(m => m.role === 'assistant');
   
   const messagesAsGeneric: Message[] = messages.map(msg => ({
     id: msg.id,
@@ -103,8 +124,8 @@ export default function RoomView({ room, agents }: RoomViewProps) {
           <MessageList 
             messages={messagesAsGeneric} 
             isLoading={isLoading} 
-            agentName={lastMessage?.agentName}
-            agentAvatar={lastMessage?.agentAvatar}
+            agentName={lastAssistantMessage?.agentName}
+            agentAvatar={lastAssistantMessage?.agentAvatar}
           />
         )}
       </div>
