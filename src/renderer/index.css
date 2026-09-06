@@ -102,6 +102,7 @@ code, .path {
   display: flex;
   flex-direction: column;
   -webkit-app-region: drag;
+  position: relative;
 }
 
 .sidebar > * {
@@ -109,11 +110,11 @@ code, .path {
 }
 
 .sidebar-header {
-  padding: 16px 12px;
+  padding: 20px 12px;
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
 }
 
 .sidebar-logo {
@@ -148,8 +149,8 @@ code, .path {
 
 .provider-menu {
   position: absolute;
-  top: 64px;
-  left: 8px;
+  top: 56px;
+  right: 8px;
   width: 200px;
   background: var(--bg-tertiary);
   border: 1px solid var(--border-default);
@@ -163,8 +164,6 @@ code, .path {
   padding: 8px 12px;
   font-size: 11px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
   color: var(--text-muted);
 }
 
@@ -193,9 +192,9 @@ code, .path {
   cursor: not-allowed;
 }
 
-.provider-menu-item .no-secret {
-  font-size: 10px;
-  opacity: 0.6;
+.provider-menu-item .needs-key {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .agents-rail {
@@ -324,6 +323,7 @@ code, .path {
   align-items: center;
   gap: 8px;
   -webkit-app-region: drag;
+  position: relative;
 }
 
 .chat-header > * {
@@ -341,6 +341,11 @@ code, .path {
   font-size: 12px;
   color: var(--text-tertiary);
   margin-left: 6px;
+}
+
+.provider-toggle-wrapper {
+  margin-left: auto;
+  position: relative;
 }
 
 .chat-container {
@@ -522,23 +527,23 @@ code, .path {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   color: var(--text-tertiary);
-  padding: 48px;
+  padding: 0 48px 80px 48px;
   text-align: center;
 }
 
 .empty-icon {
-  font-size: 32px;
-  margin-bottom: 12px;
-  opacity: 0.5;
+  font-size: 28px;
+  margin-bottom: 8px;
+  opacity: 0.4;
 }
 
 .empty-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 
 .empty-description {

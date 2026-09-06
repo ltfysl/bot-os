@@ -24,9 +24,8 @@ function App() {
         agents={agents}
         activeAgentId={activeAgentId}
         onAgentSelect={setActiveAgentId}
-        onAgentsChange={loadAgents}
       />
-      <ChatView agent={activeAgent} />
+      <ChatView agent={activeAgent} onAgentsChange={loadAgents} />
     </div>
   );
 }
