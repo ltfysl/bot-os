@@ -48,4 +48,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-default-provider'),
   updateAgentProvider: (agentId: string, providerId: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke('update-agent-provider', agentId, providerId),
+  setProviderSecret: (providerId: string, secret: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('set-provider-secret', providerId, secret),
 });

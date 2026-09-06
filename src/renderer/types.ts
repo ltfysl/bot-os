@@ -42,6 +42,7 @@ declare global {
       setDefaultProvider: (providerId: string) => Promise<{ success: boolean }>;
       getDefaultProvider: () => Promise<string | undefined>;
       updateAgentProvider: (agentId: string, providerId: string) => Promise<{ success: boolean }>;
+      setProviderSecret: (providerId: string, secret: string) => Promise<{ success: boolean; error?: string }>;
     };
   }
 }

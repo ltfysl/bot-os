@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
+import SecretRequestCard from './SecretRequestCard';
 import type { Agent, Message, ProviderInfo } from '../types';
 
 interface ChatViewProps {
@@ -13,6 +14,8 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [showProviders, setShowProviders] = useState(false);
+  const [showSecretCard, setShowSecretCard] = useState(false);
+  const [secretCardProvider, setSecretCardProvider] = useState<{ id: string; name: string } | null>(null);
   const providerMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,10 +25,6 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   }, [agent?.id]);
 
   useEffect(() => {
-    const loadProviders = async () => {
-      const providerList = await window.electronAPI.listProviders();
-      setProviders(providerList);
-    };
     loadProviders();
   }, []);
 
@@ -67,6 +66,22 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
       setShowProviders(false);
       onAgentsChange();
     }
+  };
+
+  const handleNeedsKeyClick = (provider: ProviderInfo) => {
+    setSecretCardProvider({ id: provider.id, name: provider.name });
+    setShowSecretCard(true);
+    setShowProviders(false);
+  };
+
+  const handleSecretSuccess = async () => {
+    await loadProviders();
+    onAgentsChange();
+  };
+
+  const loadProviders = async () => {
+    const providerList = await window.electronAPI.listProviders();
+    setProviders(providerList);
   };
   const loadSeedMessages = (agentId: string) => {
     const seedsByAgent: Record<string, Message[]> = {
@@ -159,8 +174,13 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
                   className={`provider-menu-item ${
                     agent.providerId === provider.id ? 'active' : ''
                   } ${!provider.isAvailable ? 'unavailable' : ''}`}
-                  onClick={() => handleProviderSwitch(provider.id)}
-                  disabled={!provider.isAvailable}
+                  onClick={() => {
+                    if (provider.isAvailable) {
+                      handleProviderSwitch(provider.id);
+                    } else {
+                      handleNeedsKeyClick(provider);
+                    }
+                  }}
                 >
                   <span>{provider.name}</span>
                   {!provider.isAvailable && <span className="needs-key">Needs key</span>}
@@ -174,6 +194,15 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
         <MessageList messages={messages} isLoading={isLoading} agentName={agent.name} agentAvatar={agent.avatar} />
       </div>
       <MessageComposer onSend={handleSendMessage} disabled={isLoading} />
+      
+      {showSecretCard && secretCardProvider && (
+        <SecretRequestCard
+          providerId={secretCardProvider.id}
+          providerName={secretCardProvider.name}
+          onClose={() => setShowSecretCard(false)}
+          onSuccess={handleSecretSuccess}
+        />
+      )}
     </div>
   );
 }

@@ -153,3 +153,16 @@ ipcMain.handle('update-agent-provider', async (_event, agentId: string, provider
   agentBus.updateAgentProvider(agentId, providerId);
   return { success: true };
 });
+
+ipcMain.handle('set-provider-secret', async (_event, providerId: string, secret: string) => {
+  try {
+    const { setProviderSecret } = await import('./secrets');
+    setProviderSecret(providerId, 'apiKey', secret);
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to save secret',
+    };
+  }
+});
