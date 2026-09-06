@@ -5,6 +5,7 @@ import { MockEchoProvider, MockIntelligentProvider } from './providers/mock-prov
 import { MiniMaxProvider } from './providers/minimax-provider';
 import { ZaiProvider } from './providers/zai-provider';
 import { RoutineManager, Routine, RoutineCreateInput, RoutineUpdateInput } from './routines';
+import { setProviderSecret, clearProviderSecret } from './secrets';
 
 let mainWindow: BrowserWindow | null = null;
 let agentBus: AgentBus;
@@ -199,4 +200,41 @@ ipcMain.handle('set-routine-enabled', async (_event, id: string, enabled: boolea
 
 ipcMain.handle('delete-routine', async (_event, id: string) => {
   return routineManager.deleteRoutine(id);
+});
+
+ipcMain.handle('set-provider-secret', async (_event, providerId: string, secretName: string, value: string) => {
+  try {
+    if (!providerId || typeof providerId !== 'string') {
+      return { ok: false, error: 'Invalid providerId' };
+    }
+    if (!secretName || typeof secretName !== 'string') {
+      return { ok: false, error: 'Invalid secretName' };
+    }
+    if (!value || typeof value !== 'string') {
+      return { ok: false, error: 'Invalid value' };
+    }
+
+    setProviderSecret(providerId, secretName, value);
+    
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+});
+
+ipcMain.handle('clear-provider-secret', async (_event, providerId: string, secretName: string) => {
+  try {
+    if (!providerId || typeof providerId !== 'string') {
+      return { ok: false, error: 'Invalid providerId' };
+    }
+    if (!secretName || typeof secretName !== 'string') {
+      return { ok: false, error: 'Invalid secretName' };
+    }
+
+    const cleared = clearProviderSecret(providerId, secretName);
+    
+    return { ok: true, cleared };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
 });

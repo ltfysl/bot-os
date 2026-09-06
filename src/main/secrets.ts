@@ -21,6 +21,17 @@ export function hasProviderSecret(providerId: string, key: string): boolean {
   return Boolean(getProviderSecret(providerId, key));
 }
 
+export function clearProviderSecret(providerId: string, key: string): boolean {
+  if (secrets[providerId]?.[key]) {
+    delete secrets[providerId][key];
+    if (Object.keys(secrets[providerId]).length === 0) {
+      delete secrets[providerId];
+    }
+    return true;
+  }
+  return false;
+}
+
 export function clearProviderSecrets(providerId: string): void {
   delete secrets[providerId];
 }

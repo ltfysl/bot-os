@@ -54,6 +54,17 @@ export interface RoutineUpdateInput {
   enabled?: boolean;
 }
 
+export interface SetSecretResult {
+  ok: boolean;
+  error?: string;
+}
+
+export interface ClearSecretResult {
+  ok: boolean;
+  cleared?: boolean;
+  error?: string;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -70,6 +81,8 @@ declare global {
       updateRoutine: (id: string, input: RoutineUpdateInput) => Promise<Routine>;
       setRoutineEnabled: (id: string, enabled: boolean) => Promise<Routine>;
       deleteRoutine: (id: string) => Promise<boolean>;
+      setProviderSecret: (providerId: string, secretName: string, value: string) => Promise<SetSecretResult>;
+      clearProviderSecret: (providerId: string, secretName: string) => Promise<ClearSecretResult>;
     };
   }
 }
