@@ -6,10 +6,12 @@ import { MiniMaxProvider } from './providers/minimax-provider';
 import { ZaiProvider } from './providers/zai-provider';
 import { RoutineManager, Routine, RoutineCreateInput, RoutineUpdateInput } from './routines';
 import { setProviderSecret, clearProviderSecret } from './secrets';
+import { RoomManager, Room } from './rooms';
 
 let mainWindow: BrowserWindow | null = null;
 let agentBus: AgentBus;
 let routineManager: RoutineManager;
+let roomManager: RoomManager;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -92,6 +94,8 @@ app.whenReady().then(() => {
     }
   });
   routineManager.startScheduler();
+
+  roomManager = new RoomManager();
 
   createWindow();
 
@@ -238,3 +242,128 @@ ipcMain.handle('clear-provider-secret', async (_event, providerId: string, secre
     return { ok: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 });
+
+ipcMain.handle('list-rooms', async () => {
+  return roomManager.listRooms();
+});
+
+ipcMain.handle('create-room', async (_event, name: string, memberAgentIds: string[]) => {
+  return roomManager.createRoom(name, memberAgentIds);
+});
+
+ipcMain.handle('get-room', async (_event, roomId: string) => {
+  return roomManager.getRoom(roomId);
+});
+
+ipcMain.handle('update-room', async (_event, roomId: string, updates: Partial<Omit<Room, 'id'>>) => {
+  return roomManager.updateRoom(roomId, updates);
+});
+
+ipcMain.handle('delete-room', async (_event, roomId: string) => {
+  return roomManager.deleteRoom(roomId);
+});
+
+ipcMain.handle('get-room-messages', async (_event, roomId: string) => {
+  return roomManager.getRoomMessages(roomId);
+});
+
+ipcMain.handle('send-room-message', async (event, roomId: string, content: string, senderId?: string) => {
+  const room = roomManager.getRoom(roomId);
+  if (!room) {
+    throw new Error(`Room not found: ${roomId}`);
+  }
+
+  const userMessage = {
+    id: `${Date.now()}-user`,
+    roomId,
+    content,
+    role: 'user' as const,
+    timestamp: Date.now(),
+  };
+  
+  roomManager.addRoomMessage(userMessage);
+
+  const mentionedAgentIds = extractRoomMentions(content, room.memberAgentIds);
+  
+  if (mentionedAgentIds.length === 0) {
+    if (senderId) {
+      const agent = agentBus.getAgent(senderId);
+      if (agent) {
+        try {
+          const response = await agentBus.sendMessage(content, senderId, { room: roomId });
+          const assistantMessage = {
+            id: response.id,
+            roomId,
+            content: response.content,
+            role: 'assistant' as const,
+            timestamp: response.timestamp,
+            agentId: senderId,
+            agentName: agent.name,
+            agentAvatar: agent.avatar,
+          };
+          roomManager.addRoomMessage(assistantMessage);
+          return assistantMessage;
+        } catch (err) {
+          console.error(`Failed to send message from agent ${senderId}:`, err);
+          throw err;
+        }
+      }
+    }
+    return userMessage;
+  }
+
+  const responsePromises = mentionedAgentIds.map(async (agentId) => {
+    const agent = agentBus.getAgent(agentId);
+    if (!agent) {
+      console.error(`Agent not found: ${agentId}`);
+      return null;
+    }
+
+    try {
+      const response = await agentBus.sendMessage(content, agentId, { room: roomId });
+      const assistantMessage = {
+        id: response.id,
+        roomId,
+        content: response.content,
+        role: 'assistant' as const,
+        timestamp: response.timestamp,
+        agentId,
+        agentName: agent.name,
+        agentAvatar: agent.avatar,
+      };
+      
+      roomManager.addRoomMessage(assistantMessage);
+      
+      event.sender.send('room-fan-in-response', assistantMessage);
+      
+      return assistantMessage;
+    } catch (err) {
+      console.error(`Failed to wake agent ${agentId} in room ${roomId}:`, err);
+      return null;
+    }
+  });
+
+  await Promise.allSettled(responsePromises);
+  
+  return userMessage;
+});
+
+ipcMain.handle('clear-room-unread', async (_event, roomId: string) => {
+  roomManager.clearUnread(roomId);
+  return { success: true };
+});
+
+function extractRoomMentions(message: string, memberAgentIds: string[]): string[] {
+  const mentionPattern = /@(\w+)/g;
+  const matches = Array.from(message.matchAll(mentionPattern));
+  const mentionedNames = matches.map((m) => m[1].toLowerCase());
+
+  const agentIds: string[] = [];
+  for (const agentId of memberAgentIds) {
+    const agent = agentBus.getAgent(agentId);
+    if (agent && mentionedNames.includes(agent.name.toLowerCase())) {
+      agentIds.push(agentId);
+    }
+  }
+  return agentIds;
+}

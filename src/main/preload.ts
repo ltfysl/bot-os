@@ -65,6 +65,24 @@ export interface ClearSecretResult {
   error?: string;
 }
 
+export interface Room {
+  id: string;
+  name: string;
+  memberAgentIds: string[];
+  unread?: number;
+}
+
+export interface RoomMessage {
+  id: string;
+  roomId: string;
+  content: string;
+  role: 'user' | 'assistant';
+  timestamp: number;
+  agentId?: string;
+  agentName?: string;
+  agentAvatar?: string;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   sendMessage: (agentId: string, message: string): Promise<Message> =>
     ipcRenderer.invoke('send-message', agentId, message),
@@ -95,4 +113,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('set-provider-secret', providerId, secretName, value),
   clearProviderSecret: (providerId: string, secretName: string): Promise<ClearSecretResult> =>
     ipcRenderer.invoke('clear-provider-secret', providerId, secretName),
+  listRooms: (): Promise<Room[]> => ipcRenderer.invoke('list-rooms'),
+  createRoom: (name: string, memberAgentIds: string[]): Promise<Room> =>
+    ipcRenderer.invoke('create-room', name, memberAgentIds),
+  getRoom: (roomId: string): Promise<Room | undefined> =>
+    ipcRenderer.invoke('get-room', roomId),
+  updateRoom: (roomId: string, updates: Partial<Omit<Room, 'id'>>): Promise<Room | undefined> =>
+    ipcRenderer.invoke('update-room', roomId, updates),
+  deleteRoom: (roomId: string): Promise<boolean> =>
+    ipcRenderer.invoke('delete-room', roomId),
+  getRoomMessages: (roomId: string): Promise<RoomMessage[]> =>
+    ipcRenderer.invoke('get-room-messages', roomId),
+  sendRoomMessage: (roomId: string, content: string, senderId?: string): Promise<RoomMessage> =>
+    ipcRenderer.invoke('send-room-message', roomId, content, senderId),
+  clearRoomUnread: (roomId: string): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('clear-room-unread', roomId),
+  onRoomFanInResponse: (callback: (message: RoomMessage) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, message: RoomMessage) => callback(message);
+    ipcRenderer.on('room-fan-in-response', handler);
+    return () => ipcRenderer.removeListener('room-fan-in-response', handler);
+  },
 });
