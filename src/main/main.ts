@@ -100,6 +100,7 @@ ipcMain.handle('send-message', async (event, agentId: string, message: string) =
         agentId: wakeResponse.agentId,
         agentName: wakeResponse.agentName,
         agentAvatar: wakeResponse.agentAvatar,
+        targetAgentId: agentId,
       });
     }
   );

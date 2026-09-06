@@ -30,10 +30,13 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   }, []);
 
   useEffect(() => {
-    window.electronAPI.onWakeResponse((message: Message) => {
-      setMessages((prev) => [...prev, message]);
+    const unsubscribe = window.electronAPI.onWakeResponse((message: Message) => {
+      if (message.targetAgentId === agent?.id) {
+        setMessages((prev) => [...prev, message]);
+      }
     });
-  }, []);
+    return () => unsubscribe();
+  }, [agent?.id]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
