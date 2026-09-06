@@ -5,18 +5,9 @@ export interface Message {
   content: string;
   role: 'user' | 'assistant';
   timestamp: number;
-  wakerId?: string;
-}
-
-export interface WakeResponse {
-  wokeAgentId: string;
-  wokeAgentName: string;
-  response: Message;
-}
-
-export interface SendMessageResult {
-  primary: Message;
-  wakeResults: WakeResponse[];
+  agentId?: string;
+  agentName?: string;
+  agentAvatar?: string;
 }
 
 export interface Channel {
@@ -40,8 +31,11 @@ export interface ProviderInfo {
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  sendMessage: (agentId: string, message: string): Promise<SendMessageResult> =>
+  sendMessage: (agentId: string, message: string): Promise<Message> =>
     ipcRenderer.invoke('send-message', agentId, message),
+  onWakeResponse: (callback: (message: Message) => void): void => {
+    ipcRenderer.on('wake-response', (_event, message: Message) => callback(message));
+  },
   getChannels: (): Promise<Channel[]> => ipcRenderer.invoke('get-channels'),
   getAgents: (): Promise<Agent[]> => ipcRenderer.invoke('get-agents'),
   listProviders: (): Promise<ProviderInfo[]> => ipcRenderer.invoke('list-providers'),

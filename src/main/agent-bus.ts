@@ -12,13 +12,9 @@ export interface AgentBusMessage {
   role: 'user' | 'assistant' | 'system';
   timestamp: number;
   metadata?: Record<string, unknown>;
-  wakerId?: string;
-}
-
-export interface WakeResult {
-  wokeAgentId: string;
-  wokeAgentName: string;
-  response: AgentBusMessage;
+  agentId?: string;
+  agentName?: string;
+  agentAvatar?: string;
 }
 
 export interface AgentBusConfig {
@@ -88,26 +84,33 @@ export class AgentBus {
   async sendMessageWithWake(
     message: string,
     agentId: string,
-    context?: Record<string, unknown>
-  ): Promise<{ primary: AgentBusMessage; wakeResults: WakeResult[] }> {
+    context?: Record<string, unknown>,
+    onWakeResponse?: (response: AgentBusMessage) => void
+  ): Promise<AgentBusMessage> {
+    const primaryAgent = this.agents.get(agentId);
+    if (!primaryAgent) {
+      throw new Error(`Agent not found: ${agentId}`);
+    }
+
+    const primary = await this.sendMessage(message, agentId, context);
+    primary.agentId = agentId;
+    primary.agentName = primaryAgent.name;
+    primary.agentAvatar = primaryAgent.avatar;
+
     const mentionedAgentIds = this.extractMentions(message);
     const wokeAgents = mentionedAgentIds.filter((id) => id !== agentId);
 
-    const wakePromises = wokeAgents.map((wokeAgentId) =>
-      this.wakeAgent(wokeAgentId, message, agentId).catch((err) => {
-        console.error(`Failed to wake agent ${wokeAgentId}:`, err);
-        return null;
-      })
-    );
+    if (wokeAgents.length > 0 && onWakeResponse) {
+      wokeAgents.forEach((wokeAgentId) => {
+        this.wakeAgent(wokeAgentId, message, agentId)
+          .then((wakeMsg) => onWakeResponse(wakeMsg))
+          .catch((err) => {
+            console.error(`Failed to wake agent ${wokeAgentId}:`, err);
+          });
+      });
+    }
 
-    const [primaryResponse, ...wakeSettled] = await Promise.all([
-      this.sendMessage(message, agentId, context),
-      ...wakePromises.map((p) => this.timeoutPromise(p, 5000)),
-    ]);
-
-    const wakeResults = wakeSettled.filter((r): r is WakeResult => r !== null);
-
-    return { primary: primaryResponse, wakeResults };
+    return primary;
   }
 
   private extractMentions(message: string): string[] {
@@ -128,7 +131,21 @@ export class AgentBus {
     wokeAgentId: string,
     originalMessage: string,
     wakerId: string
-  ): Promise<WakeResult> {
+  ): Promise<AgentBusMessage> {
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Wake timeout')), 5000)
+    );
+
+    const wakePromise = this._wakeAgentInternal(wokeAgentId, originalMessage, wakerId);
+
+    return Promise.race([wakePromise, timeoutPromise]);
+  }
+
+  private async _wakeAgentInternal(
+    wokeAgentId: string,
+    originalMessage: string,
+    wakerId: string
+  ): Promise<AgentBusMessage> {
     const wokeAgent = this.agents.get(wokeAgentId);
     if (!wokeAgent) {
       throw new Error(`Woken agent not found: ${wokeAgentId}`);
@@ -148,23 +165,16 @@ export class AgentBus {
     const response = await provider.sendMessage(wakeContext, { wake: true });
 
     return {
-      wokeAgentId,
-      wokeAgentName: wokeAgent.name,
-      response: {
-        id: `${Date.now()}-${wokeAgentId}`,
-        providerId: wokeAgent.providerId,
-        content: response,
-        role: 'assistant',
-        timestamp: Date.now(),
-        metadata: { wake: true },
-        wakerId,
-      },
+      id: `${Date.now()}-${wokeAgentId}`,
+      providerId: wokeAgent.providerId,
+      content: response,
+      role: 'assistant',
+      timestamp: Date.now(),
+      metadata: { wake: true },
+      agentId: wokeAgentId,
+      agentName: wokeAgent.name,
+      agentAvatar: wokeAgent.avatar,
     };
-  }
-
-  private async timeoutPromise<T>(promise: Promise<T>, ms: number): Promise<T | null> {
-    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), ms));
-    return Promise.race([promise, timeout]);
   }
 
   getProvider(providerId: string): AgentProvider | undefined {

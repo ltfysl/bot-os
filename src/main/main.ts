@@ -86,26 +86,32 @@ app.on('window-all-closed', () => {
   }
 });
 
-ipcMain.handle('send-message', async (_event, agentId: string, message: string) => {
-  const result = await agentBus.sendMessageWithWake(message, agentId);
+ipcMain.handle('send-message', async (event, agentId: string, message: string) => {
+  const primary = await agentBus.sendMessageWithWake(
+    message,
+    agentId,
+    undefined,
+    (wakeResponse) => {
+      event.sender.send('wake-response', {
+        id: wakeResponse.id,
+        content: wakeResponse.content,
+        role: wakeResponse.role,
+        timestamp: wakeResponse.timestamp,
+        agentId: wakeResponse.agentId,
+        agentName: wakeResponse.agentName,
+        agentAvatar: wakeResponse.agentAvatar,
+      });
+    }
+  );
+
   return {
-    primary: {
-      id: result.primary.id,
-      content: result.primary.content,
-      role: result.primary.role,
-      timestamp: result.primary.timestamp,
-    },
-    wakeResults: result.wakeResults.map((wr) => ({
-      wokeAgentId: wr.wokeAgentId,
-      wokeAgentName: wr.wokeAgentName,
-      response: {
-        id: wr.response.id,
-        content: wr.response.content,
-        role: wr.response.role,
-        timestamp: wr.response.timestamp,
-        wakerId: wr.response.wakerId,
-      },
-    })),
+    id: primary.id,
+    content: primary.content,
+    role: primary.role,
+    timestamp: primary.timestamp,
+    agentId: primary.agentId,
+    agentName: primary.agentName,
+    agentAvatar: primary.agentAvatar,
   };
 });
 
