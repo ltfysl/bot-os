@@ -146,7 +146,7 @@ interface AgentProvider {
 **Current Providers:**
 - `MockEchoProvider` - Short-beat acknowledgments
 - `MockIntelligentProvider` - Simulates realistic AI responses with varied lengths
-- `MiniMaxProvider` - Third-party API integration (unavailable without credentials)
+- `MiniMaxProvider` - Real third-party API integration (see Configuration below)
 
 **Provider Pluggability:**
 - Providers register at startup via `AgentBus` constructor
@@ -158,6 +158,20 @@ interface AgentProvider {
 **Future Providers:**
 - OpenAI, Anthropic, local models (Ollama, LM Studio)
 - Custom provider plugins following the `AgentProvider` interface
+
+### Provider Configuration
+
+#### MiniMax Provider
+To enable the MiniMax provider, set your API key via environment variable:
+
+```bash
+export MINIMAX_APIKEY=your_api_key_here
+npm start
+```
+
+The provider will automatically become available when a valid key is present. Without a key, it remains listed but shows as unavailable.
+
+**Get your API key:** Visit [MiniMax Platform](https://platform.minimax.io/) to create an account and generate an API key.
 
 ### IPC Communication
 
