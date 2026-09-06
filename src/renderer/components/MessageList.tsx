@@ -6,6 +6,34 @@ interface MessageListProps {
   isLoading: boolean;
 }
 
+function parseInlineCode(text: string): (string | JSX.Element)[] {
+  const parts: (string | JSX.Element)[] = [];
+  const regex = /`([^`]+)`/g;
+  let lastIndex = 0;
+  let match;
+  let keyCounter = 0;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    const codeContent = match[1];
+    const isPath = codeContent.includes('/') || codeContent.includes('.');
+    parts.push(
+      <code key={keyCounter++} className={isPath ? 'path' : ''}>
+        {codeContent}
+      </code>
+    );
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : [text];
+}
+
 export default function MessageList({ messages, isLoading }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -17,11 +45,8 @@ export default function MessageList({ messages, isLoading }: MessageListProps) {
     return (
       <div className="chat-messages">
         <div className="empty-state">
-          <div className="empty-icon">✨</div>
-          <div className="empty-title">Start a Conversation</div>
-          <div className="empty-description">
-            Type a message below to begin chatting with the assistant
-          </div>
+          <div className="empty-icon">💬</div>
+          <div className="empty-title">No messages yet</div>
         </div>
       </div>
     );
@@ -46,7 +71,7 @@ export default function MessageList({ messages, isLoading }: MessageListProps) {
                 })}
               </span>
             </div>
-            <div className="message-text">{message.content}</div>
+            <div className="message-text">{parseInlineCode(message.content)}</div>
           </div>
         </div>
       ))}
