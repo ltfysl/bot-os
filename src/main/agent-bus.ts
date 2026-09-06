@@ -258,6 +258,10 @@ export class AgentBus {
       return hasProviderSecret('coding-plan', 'apiKey');
     }
     
+    if (providerId === 'anthropic') {
+      return hasProviderSecret('anthropic', 'apiKey');
+    }
+    
     return false;
   }
 }
