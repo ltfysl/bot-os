@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { Routine } from '../types';
+import type { Routine, RoutineCreateInput } from '../types';
 
 interface RoutinesViewProps {
   onClose: () => void;
@@ -9,6 +9,14 @@ export default function RoutinesView({ onClose }: RoutinesViewProps) {
   const [routines, setRoutines] = useState<Routine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState<RoutineCreateInput>({
+    name: '',
+    prompt: '',
+    schedule: '',
+    enabled: true,
+  });
+  const [creating, setCreating] = useState(false);
 
   const loadRoutines = async () => {
     try {
@@ -37,12 +45,31 @@ export default function RoutinesView({ onClose }: RoutinesViewProps) {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete routine "${name}"?`)) return;
+    if (!confirm(`Delete "${name}"?`)) return;
     try {
       await window.electronAPI.deleteRoutine(id);
       await loadRoutines();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete routine');
+    }
+  };
+
+  const handleCreate = async () => {
+    if (!createForm.name.trim() || !createForm.prompt.trim() || !createForm.schedule.trim()) {
+      setError('Name, schedule, and prompt are required');
+      return;
+    }
+    try {
+      setCreating(true);
+      setError(null);
+      await window.electronAPI.createRoutine(createForm);
+      setShowCreate(false);
+      setCreateForm({ name: '', prompt: '', schedule: '', enabled: true });
+      await loadRoutines();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create routine');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -54,18 +81,6 @@ export default function RoutinesView({ onClose }: RoutinesViewProps) {
       return `${day} ${match[2]}:${match[3]}`;
     }
     return schedule;
-  };
-
-  const formatLastRun = (lastRun?: number): string => {
-    if (!lastRun) return 'Never';
-    const diff = Date.now() - lastRun;
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 1) return 'Just now';
-    if (minutes < 60) return `${minutes}m ago`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `${hours}h ago`;
-    const days = Math.floor(hours / 24);
-    return `${days}d ago`;
   };
 
   if (loading) {
@@ -92,49 +107,110 @@ export default function RoutinesView({ onClose }: RoutinesViewProps) {
         {error && (
           <div className="routines-error">
             {error}
+            <button onClick={() => setError(null)}>✕</button>
           </div>
         )}
         {routines.length === 0 ? (
           <div className="routines-empty">
-            <div className="empty-icon">⏰</div>
-            <div className="empty-title">No routines yet</div>
-            <div className="empty-description">
-              Scheduled routines will appear here
-            </div>
+            <div className="empty-message">No routines yet</div>
+            <button className="create-routine-btn" onClick={() => setShowCreate(true)}>
+              Create routine
+            </button>
           </div>
         ) : (
-          <div className="routines-list">
-            {routines.map((routine) => (
-              <div key={routine.id} className="routine-row">
-                <div className="routine-main">
-                  <div className="routine-name">{routine.name}</div>
-                  <div className="routine-meta">
-                    <span className="routine-schedule">{formatSchedule(routine.schedule)}</span>
-                    <span className="routine-separator">·</span>
-                    <span className="routine-last-run">{formatLastRun(routine.lastRun)}</span>
+          <>
+            <div className="routines-list">
+              {routines.map((routine) => (
+                <div key={routine.id} className="routine-row">
+                  <div className="routine-main">
+                    <div className="routine-name">{routine.name}</div>
+                    <div className="routine-schedule">{formatSchedule(routine.schedule)}</div>
+                  </div>
+                  <div className="routine-controls">
+                    <label className="routine-toggle">
+                      <input
+                        type="checkbox"
+                        checked={routine.enabled}
+                        onChange={() => handleToggleEnabled(routine.id, routine.enabled)}
+                      />
+                      <span className="toggle-slider" />
+                    </label>
+                    <button
+                      className="routine-overflow"
+                      onClick={() => handleDelete(routine.id, routine.name)}
+                      title="Delete"
+                    >
+                      ⋯
+                    </button>
                   </div>
                 </div>
-                <div className="routine-actions">
-                  <button
-                    className={`routine-action ${routine.enabled ? 'enabled' : 'disabled'}`}
-                    onClick={() => handleToggleEnabled(routine.id, routine.enabled)}
-                    title={routine.enabled ? 'Disable' : 'Enable'}
-                  >
-                    {routine.enabled ? '●' : '○'}
-                  </button>
-                  <button
-                    className="routine-action delete"
-                    onClick={() => handleDelete(routine.id, routine.name)}
-                    title="Delete"
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+            <div className="routines-footer">
+              <button className="create-routine-btn" onClick={() => setShowCreate(true)}>
+                + New routine
+              </button>
+            </div>
+          </>
         )}
       </div>
+      {showCreate && (
+        <div className="create-sheet-overlay" onClick={() => setShowCreate(false)}>
+          <div className="create-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="create-sheet-header">
+              <span className="create-sheet-title">New routine</span>
+              <button className="create-sheet-close" onClick={() => setShowCreate(false)}>
+                ✕
+              </button>
+            </div>
+            <div className="create-sheet-body">
+              <div className="create-field">
+                <label className="create-label">Name</label>
+                <input
+                  type="text"
+                  className="create-input"
+                  placeholder="Morning standup"
+                  value={createForm.name}
+                  onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                  autoFocus
+                />
+              </div>
+              <div className="create-field">
+                <label className="create-label">Schedule</label>
+                <input
+                  type="text"
+                  className="create-input"
+                  placeholder="Mon 09:00 or 0 9 * * 1"
+                  value={createForm.schedule}
+                  onChange={(e) => setCreateForm({ ...createForm, schedule: e.target.value })}
+                />
+              </div>
+              <div className="create-field">
+                <label className="create-label">Prompt</label>
+                <textarea
+                  className="create-input create-textarea"
+                  placeholder="What should the routine do?"
+                  value={createForm.prompt}
+                  onChange={(e) => setCreateForm({ ...createForm, prompt: e.target.value })}
+                  rows={3}
+                />
+              </div>
+            </div>
+            <div className="create-sheet-footer">
+              <button className="create-cancel" onClick={() => setShowCreate(false)}>
+                Cancel
+              </button>
+              <button
+                className="create-submit"
+                onClick={handleCreate}
+                disabled={creating || !createForm.name.trim() || !createForm.schedule.trim() || !createForm.prompt.trim()}
+              >
+                {creating ? 'Creating...' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
