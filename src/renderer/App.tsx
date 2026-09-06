@@ -1,11 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import ChatView from './components/ChatView';
 import Sidebar from './components/Sidebar';
+import RoutinesView from './components/RoutinesView';
 import type { Agent } from './types';
+
+type ViewMode = 'chat' | 'routines';
 
 function App() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [activeAgentId, setActiveAgentId] = useState<string>('1');
+  const [viewMode, setViewMode] = useState<ViewMode>('chat');
 
   const loadAgents = useCallback(async () => {
     const agentsData = await window.electronAPI.getAgents();
@@ -23,9 +27,18 @@ function App() {
       <Sidebar
         agents={agents}
         activeAgentId={activeAgentId}
-        onAgentSelect={setActiveAgentId}
+        onAgentSelect={(id) => {
+          setActiveAgentId(id);
+          setViewMode('chat');
+        }}
+        viewMode={viewMode}
+        onRoutinesClick={() => setViewMode('routines')}
       />
-      <ChatView agent={activeAgent} onAgentsChange={loadAgents} />
+      {viewMode === 'chat' ? (
+        <ChatView agent={activeAgent} onAgentsChange={loadAgents} />
+      ) : (
+        <RoutinesView onClose={() => setViewMode('chat')} />
+      )}
     </div>
   );
 }

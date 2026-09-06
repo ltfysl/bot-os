@@ -4,12 +4,16 @@ interface SidebarProps {
   agents: Agent[];
   activeAgentId: string;
   onAgentSelect: (agentId: string) => void;
+  viewMode: 'chat' | 'routines';
+  onRoutinesClick: () => void;
 }
 
 export default function Sidebar({
   agents,
   activeAgentId,
   onAgentSelect,
+  viewMode,
+  onRoutinesClick,
 }: SidebarProps) {
   return (
     <div className="sidebar">
@@ -21,7 +25,7 @@ export default function Sidebar({
           <button
             key={agent.id}
             className={`agent-rail-item ${
-              agent.id === activeAgentId ? 'active' : ''
+              agent.id === activeAgentId && viewMode === 'chat' ? 'active' : ''
             }`}
             onClick={() => onAgentSelect(agent.id)}
           >
@@ -35,6 +39,15 @@ export default function Sidebar({
             )}
           </button>
         ))}
+      </div>
+      <div className="sidebar-footer">
+        <button
+          className={`sidebar-footer-item ${viewMode === 'routines' ? 'active' : ''}`}
+          onClick={onRoutinesClick}
+          title="Routines"
+        >
+          <span className="sidebar-footer-icon">⏰</span>
+        </button>
       </div>
     </div>
   );

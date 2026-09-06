@@ -116,6 +116,13 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
       setMessages((prev) => [...prev, primaryResponse]);
     } catch (error) {
       console.error('Failed to send message:', error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: `Failed to send message: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        role: 'assistant',
+        timestamp: Date.now(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }

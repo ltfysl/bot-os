@@ -63,6 +63,7 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
         const displayAvatar = message.role === 'user' 
           ? '👤' 
           : (message.agentAvatar || '🤖');
+        const isError = message.content.startsWith('Failed to send message:');
 
         return (
           <div key={message.id} className={`message ${message.role}`}>
@@ -77,7 +78,9 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
                   })}
                 </span>
               </div>
-              <div className="message-text">{parseInlineCode(message.content)}</div>
+              <div className={`message-text ${isError ? 'error' : ''}`}>
+                {parseInlineCode(message.content)}
+              </div>
             </div>
           </div>
         );
