@@ -104,8 +104,17 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
     setIsLoading(true);
 
     try {
-      const assistantMessage = await window.electronAPI.sendMessage(agent.id, content);
-      setMessages((prev) => [...prev, assistantMessage]);
+      const result = await window.electronAPI.sendMessage(agent.id, content);
+      
+      setMessages((prev) => [...prev, result.primary]);
+      
+      if (result.wakeResults && result.wakeResults.length > 0) {
+        const wakeMessages = result.wakeResults.map((wr) => ({
+          ...wr.response,
+          content: `[${wr.wokeAgentName}] ${wr.response.content}`,
+        }));
+        setMessages((prev) => [...prev, ...wakeMessages]);
+      }
     } catch (error) {
       console.error('Failed to send message:', error);
     } finally {

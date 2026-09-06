@@ -87,12 +87,25 @@ app.on('window-all-closed', () => {
 });
 
 ipcMain.handle('send-message', async (_event, agentId: string, message: string) => {
-  const response = await agentBus.sendMessage(message, agentId);
+  const result = await agentBus.sendMessageWithWake(message, agentId);
   return {
-    id: response.id,
-    content: response.content,
-    role: response.role,
-    timestamp: response.timestamp,
+    primary: {
+      id: result.primary.id,
+      content: result.primary.content,
+      role: result.primary.role,
+      timestamp: result.primary.timestamp,
+    },
+    wakeResults: result.wakeResults.map((wr) => ({
+      wokeAgentId: wr.wokeAgentId,
+      wokeAgentName: wr.wokeAgentName,
+      response: {
+        id: wr.response.id,
+        content: wr.response.content,
+        role: wr.response.role,
+        timestamp: wr.response.timestamp,
+        wakerId: wr.response.wakerId,
+      },
+    })),
   };
 });
 
