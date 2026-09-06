@@ -14,59 +14,11 @@ export default function Sidebar({
   onAgentSelect,
   onAgentsChange,
 }: SidebarProps) {
-  const [providers, setProviders] = useState<ProviderInfo[]>([]);
-  const [showProviders, setShowProviders] = useState(false);
-
-  useEffect(() => {
-    const loadProviders = async () => {
-      const providerList = await window.electronAPI.listProviders();
-      setProviders(providerList);
-    };
-    loadProviders();
-  }, []);
-
-  const handleProviderSwitch = async (providerId: string) => {
-    if (activeAgentId) {
-      await window.electronAPI.updateAgentProvider(activeAgentId, providerId);
-      setShowProviders(false);
-      onAgentsChange();
-    }
-  };
-
-  const activeAgent = agents.find((a) => a.id === activeAgentId);
-
   return (
     <div className="sidebar">
       <div className="sidebar-header">
         <div className="sidebar-logo">B</div>
-        <button
-          className="provider-toggle"
-          onClick={() => setShowProviders(!showProviders)}
-          title="Switch provider"
-        >
-          ⚙
-        </button>
       </div>
-      {showProviders && (
-        <div className="provider-menu">
-          <div className="provider-menu-header">
-            {activeAgent ? `${activeAgent.name} provider` : 'Provider'}
-          </div>
-          {providers.map((provider) => (
-            <button
-              key={provider.id}
-              className={`provider-menu-item ${
-                activeAgent?.providerId === provider.id ? 'active' : ''
-              } ${!provider.isAvailable ? 'unavailable' : ''}`}
-              onClick={() => handleProviderSwitch(provider.id)}
-              disabled={!provider.isAvailable}
-            >
-              <span>{provider.name}</span>
-              {!provider.isAvailable && <span className="no-secret">🔒</span>}
-            </button>
-          ))}
-        </div>
-      )}
       <div className="agents-rail">
         {agents.map((agent) => (
           <button
