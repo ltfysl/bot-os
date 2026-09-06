@@ -34,9 +34,10 @@ function App() {
         viewMode={viewMode}
         onRoutinesClick={() => setViewMode('routines')}
       />
-      {viewMode === 'chat' ? (
+      <div style={{ display: viewMode === 'chat' ? 'flex' : 'none', flex: 1, minWidth: 0 }}>
         <ChatView agent={activeAgent} onAgentsChange={loadAgents} />
-      ) : (
+      </div>
+      {viewMode === 'routines' && (
         <RoutinesView onClose={() => setViewMode('chat')} />
       )}
     </div>
