@@ -74,12 +74,28 @@ export default function RoutinesView({ onClose }: RoutinesViewProps) {
   };
 
   const formatSchedule = (schedule: string): string => {
+    // If already human-readable (e.g., "Mon 09:00"), return as-is
     const weekdayPattern = /^(mon|tue|wed|thu|fri|sat|sun)\s+(\d{1,2}):(\d{2})$/i;
     const match = schedule.match(weekdayPattern);
     if (match) {
       const day = match[1].charAt(0).toUpperCase() + match[1].slice(1);
       return `${day} ${match[2]}:${match[3]}`;
     }
+
+    // Try to parse cron format: minute hour * * day-of-week
+    const cronPattern = /^(\d+)\s+(\d+)\s+\*\s+\*\s+(\d+)$/;
+    const cronMatch = schedule.match(cronPattern);
+    if (cronMatch) {
+      const minute = cronMatch[1].padStart(2, '0');
+      const hour = cronMatch[2].padStart(2, '0');
+      const dayOfWeek = parseInt(cronMatch[3], 10);
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      if (dayOfWeek >= 0 && dayOfWeek <= 6) {
+        return `${days[dayOfWeek]} ${hour}:${minute}`;
+      }
+    }
+
+    // Fallback to raw schedule
     return schedule;
   };
 
