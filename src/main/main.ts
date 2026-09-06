@@ -3,6 +3,7 @@ import path from 'path';
 import { AgentBus } from './agent-bus';
 import { MockEchoProvider, MockIntelligentProvider } from './providers/mock-providers';
 import { MiniMaxProvider } from './providers/minimax-provider';
+import { ZaiProvider } from './providers/zai-provider';
 
 let mainWindow: BrowserWindow | null = null;
 let agentBus: AgentBus;
@@ -40,6 +41,7 @@ app.whenReady().then(() => {
       new MockEchoProvider(),
       new MockIntelligentProvider(),
       new MiniMaxProvider(),
+      new ZaiProvider(),
     ],
     defaultProviderId: 'mock-intelligent',
   });
