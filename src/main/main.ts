@@ -4,9 +4,11 @@ import { AgentBus } from './agent-bus';
 import { MockEchoProvider, MockIntelligentProvider } from './providers/mock-providers';
 import { MiniMaxProvider } from './providers/minimax-provider';
 import { ZaiProvider } from './providers/zai-provider';
+import { RoutineManager, Routine, RoutineCreateInput, RoutineUpdateInput } from './routines';
 
 let mainWindow: BrowserWindow | null = null;
 let agentBus: AgentBus;
+let routineManager: RoutineManager;
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -72,6 +74,23 @@ app.whenReady().then(() => {
     status: 'active',
     unread: 0,
   });
+
+  routineManager = new RoutineManager(async (routine: Routine) => {
+    const defaultProviderId = agentBus.getDefaultProviderId();
+    const agents = agentBus.getAllAgents();
+    let targetAgentId = agents.find((a) => a.providerId === defaultProviderId)?.id || agents[0]?.id;
+    if (!targetAgentId) {
+      console.error('No agent available for routine execution');
+      return;
+    }
+    try {
+      await agentBus.sendMessage(routine.prompt, targetAgentId, { routine: true });
+      console.log(`Routine fired: ${routine.name}`);
+    } catch (err) {
+      console.error(`Failed to execute routine ${routine.name}:`, err);
+    }
+  });
+  routineManager.startScheduler();
 
   createWindow();
 
@@ -154,4 +173,24 @@ ipcMain.handle('get-default-provider', async () => {
 ipcMain.handle('update-agent-provider', async (_event, agentId: string, providerId: string) => {
   agentBus.updateAgentProvider(agentId, providerId);
   return { success: true };
+});
+
+ipcMain.handle('list-routines', async () => {
+  return routineManager.listRoutines();
+});
+
+ipcMain.handle('create-routine', async (_event, input: RoutineCreateInput) => {
+  return routineManager.createRoutine(input);
+});
+
+ipcMain.handle('update-routine', async (_event, id: string, input: RoutineUpdateInput) => {
+  return routineManager.updateRoutine(id, input);
+});
+
+ipcMain.handle('set-routine-enabled', async (_event, id: string, enabled: boolean) => {
+  return routineManager.setRoutineEnabled(id, enabled);
+});
+
+ipcMain.handle('delete-routine', async (_event, id: string) => {
+  return routineManager.deleteRoutine(id);
 });
