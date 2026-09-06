@@ -14,7 +14,8 @@ export function setProviderSecret(providerId: string, key: string, value: string
 }
 
 export function getProviderSecret(providerId: string, key: string): string | undefined {
-  return secrets[providerId]?.[key] || process.env[`${providerId.toUpperCase()}_${key.toUpperCase()}`];
+  const normalizedProviderId = providerId.toUpperCase().replace(/-/g, '_');
+  return secrets[providerId]?.[key] || process.env[`${normalizedProviderId}_${key.toUpperCase()}`];
 }
 
 export function hasProviderSecret(providerId: string, key: string): boolean {
