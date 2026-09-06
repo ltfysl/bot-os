@@ -4,6 +4,8 @@ import type { Message } from '../types';
 interface MessageListProps {
   messages: Message[];
   isLoading: boolean;
+  agentName?: string;
+  agentAvatar?: string;
 }
 
 function parseInlineCode(text: string): (string | JSX.Element)[] {
@@ -34,7 +36,7 @@ function parseInlineCode(text: string): (string | JSX.Element)[] {
   return parts.length > 0 ? parts : [text];
 }
 
-export default function MessageList({ messages, isLoading }: MessageListProps) {
+export default function MessageList({ messages, isLoading, agentName, agentAvatar }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -82,10 +84,10 @@ export default function MessageList({ messages, isLoading }: MessageListProps) {
       })}
       {isLoading && (
         <div className="message assistant">
-          <div className="message-avatar">🤖</div>
+          <div className="message-avatar">{agentAvatar || '🤖'}</div>
           <div className="message-content">
             <div className="message-header">
-              <span className="message-author">Assistant</span>
+              <span className="message-author">{agentName || 'Assistant'}</span>
             </div>
             <div className="message-text" style={{ opacity: 0.5 }}>
               Thinking...

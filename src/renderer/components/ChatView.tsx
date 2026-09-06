@@ -171,7 +171,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
         </div>
       </div>
       <div className="chat-container">
-        <MessageList messages={messages} isLoading={isLoading} />
+        <MessageList messages={messages} isLoading={isLoading} agentName={agent.name} agentAvatar={agent.avatar} />
       </div>
       <MessageComposer onSend={handleSendMessage} disabled={isLoading} />
     </div>
