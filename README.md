@@ -147,6 +147,7 @@ interface AgentProvider {
 - `MockEchoProvider` - Short-beat acknowledgments
 - `MockIntelligentProvider` - Simulates realistic AI responses with varied lengths
 - `MiniMaxProvider` - Real third-party API integration (see Configuration below)
+- `ZaiProvider` - Z.ai GLM-5.3 model via OpenAI-compatible endpoint (unavailable without credentials)
 
 **Provider Pluggability:**
 - Providers register at startup via `AgentBus` constructor
@@ -172,6 +173,16 @@ npm start
 The provider will automatically become available when a valid key is present. Without a key, it remains listed but shows as unavailable.
 
 **Get your API key:** Visit [MiniMax Platform](https://platform.minimax.io/) to create an account and generate an API key.
+
+#### Z.ai Provider
+To enable the Z.ai provider, set your API key via environment variable:
+
+```bash
+export ZAI_APIKEY=your_api_key_here
+npm start
+```
+
+The provider will automatically become available when a valid key is present. Without a key, it remains listed but shows as unavailable.
 
 ### IPC Communication
 

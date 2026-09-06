@@ -244,9 +244,14 @@ export class AgentBus {
     const provider = this.providers.get(providerId);
     if (!provider) return false;
     
+    const { hasProviderSecret } = require('./secrets');
+    
     if (providerId === 'minimax') {
-      const { hasProviderSecret } = require('./secrets');
       return hasProviderSecret('minimax', 'apiKey');
+    }
+    
+    if (providerId === 'zai') {
+      return hasProviderSecret('zai', 'apiKey');
     }
     
     return false;
