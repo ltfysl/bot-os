@@ -50,6 +50,7 @@ app.whenReady().then(() => {
     providerId: 'mock-intelligent',
     avatar: '🤖',
     status: 'active',
+    unread: 0,
   });
 
   agentBus.registerAgent({
@@ -58,6 +59,7 @@ app.whenReady().then(() => {
     providerId: 'mock-echo',
     avatar: '📚',
     status: 'idle',
+    unread: 2,
   });
 
   agentBus.registerAgent({
@@ -66,6 +68,7 @@ app.whenReady().then(() => {
     providerId: 'mock-intelligent',
     avatar: '💻',
     status: 'active',
+    unread: 0,
   });
 
   createWindow();
@@ -108,7 +111,8 @@ ipcMain.handle('get-agents', async () => {
     name: agent.name,
     status: agent.status,
     avatar: agent.avatar,
-    unread: 0,
+    providerId: agent.providerId,
+    unread: agent.unread || 0,
   }));
 });
 

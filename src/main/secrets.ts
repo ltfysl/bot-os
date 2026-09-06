@@ -1,5 +1,3 @@
-import { safeStorage } from 'electron';
-
 interface SecretStore {
   [providerId: string]: {
     [key: string]: string;
@@ -25,8 +23,4 @@ export function hasProviderSecret(providerId: string, key: string): boolean {
 
 export function clearProviderSecrets(providerId: string): void {
   delete secrets[providerId];
-}
-
-export function isEncryptionAvailable(): boolean {
-  return safeStorage.isEncryptionAvailable();
 }

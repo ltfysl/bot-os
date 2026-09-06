@@ -25,6 +25,7 @@ export interface AgentDescriptor {
   providerId: string;
   avatar: string;
   status: 'active' | 'idle' | 'offline';
+  unread?: number;
 }
 
 export interface ProviderInfo {

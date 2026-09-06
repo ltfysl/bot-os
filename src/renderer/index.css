@@ -111,12 +111,14 @@ code, .path {
 .sidebar-header {
   padding: 16px 12px;
   border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .sidebar-logo {
   width: 32px;
   height: 32px;
-  margin: 0 auto;
   background: var(--accent-quiet);
   border-radius: 8px;
   display: flex;
@@ -125,6 +127,75 @@ code, .path {
   font-size: 18px;
   font-weight: 700;
   color: white;
+}
+
+.provider-toggle {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-size: 14px;
+  opacity: 0.6;
+  transition: all 0.15s;
+}
+
+.provider-toggle:hover {
+  opacity: 1;
+  background: var(--bg-hover);
+}
+
+.provider-menu {
+  position: absolute;
+  top: 64px;
+  left: 8px;
+  width: 200px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  padding: 4px;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.provider-menu-header {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.provider-menu-item {
+  width: 100%;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-radius: 4px;
+  font-size: 13px;
+  transition: background 0.15s;
+}
+
+.provider-menu-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.provider-menu-item.active {
+  background: var(--bg-active);
+  color: var(--accent-quiet);
+}
+
+.provider-menu-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.provider-menu-item .no-secret {
+  font-size: 10px;
+  opacity: 0.6;
 }
 
 .agents-rail {
