@@ -246,7 +246,7 @@ export class AgentBus {
     
     if (providerId === 'minimax') {
       const { hasProviderSecret } = require('./secrets');
-      return hasProviderSecret('minimax', 'apiKey') && hasProviderSecret('minimax', 'groupId');
+      return hasProviderSecret('minimax', 'apiKey');
     }
     
     return false;

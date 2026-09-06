@@ -3,9 +3,32 @@ import { getProviderSecret } from '../secrets';
 
 export interface MiniMaxConfig {
   apiKey?: string;
-  groupId?: string;
   model?: string;
   baseUrl?: string;
+}
+
+interface MiniMaxMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+  name?: string;
+}
+
+interface MiniMaxResponse {
+  id?: string;
+  choices?: Array<{
+    message?: {
+      role?: string;
+      content?: string;
+    };
+    finish_reason?: string;
+  }>;
+  usage?: {
+    total_tokens?: number;
+  };
+  base_resp?: {
+    status_code?: number;
+    status_msg?: string;
+  };
 }
 
 export class MiniMaxProvider implements AgentProvider {
@@ -16,22 +39,38 @@ export class MiniMaxProvider implements AgentProvider {
 
   constructor(config: MiniMaxConfig = {}) {
     this.config = {
-      model: config.model || 'abab6.5s-chat',
-      baseUrl: config.baseUrl || 'https://api.minimax.chat/v1/text/chatcompletion_v2',
+      model: config.model || 'MiniMax-Text-01',
+      baseUrl: config.baseUrl || 'https://api.minimax.io/v1/text/chatcompletion_v2',
       ...config,
     };
   }
 
   async sendMessage(message: string, context?: Record<string, unknown>): Promise<string> {
     const apiKey = this.config.apiKey || getProviderSecret('minimax', 'apiKey');
-    const groupId = this.config.groupId || getProviderSecret('minimax', 'groupId');
 
-    if (!apiKey || !groupId) {
-      throw new Error('MiniMax credentials not configured');
+    if (!apiKey) {
+      throw new Error('MiniMax API key not configured');
     }
 
+    if (!this.config.baseUrl) {
+      throw new Error('MiniMax base URL not configured');
+    }
+
+    const messages: MiniMaxMessage[] = [
+      {
+        role: 'system',
+        name: 'Assistant',
+        content: 'You are a helpful AI assistant. Provide concise, direct responses.',
+      },
+      {
+        role: 'user',
+        name: 'User',
+        content: message,
+      },
+    ];
+
     try {
-      const response = await fetch(`${this.config.baseUrl}?GroupId=${groupId}`, {
+      const response = await fetch(this.config.baseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -39,29 +78,44 @@ export class MiniMaxProvider implements AgentProvider {
         },
         body: JSON.stringify({
           model: this.config.model,
-          messages: [{ role: 'user', content: message }],
-          tokens_to_generate: 1024,
-          temperature: 0.7,
+          messages,
+          temperature: 0.9,
+          top_p: 0.95,
+          max_completion_tokens: 512,
+          stream: false,
           ...context,
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`MiniMax API error: ${response.status}`);
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`MiniMax API error ${response.status}: ${errorText}`);
       }
 
-      const data = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      return data.choices?.[0]?.message?.content || 'No response';
+      const data = (await response.json()) as MiniMaxResponse;
+
+      if (data.base_resp?.status_code !== undefined && data.base_resp.status_code !== 0) {
+        throw new Error(
+          `MiniMax service error: ${data.base_resp.status_msg || 'Unknown service error'}`
+        );
+      }
+
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) {
+        throw new Error('MiniMax returned empty response');
+      }
+
+      return content;
     } catch (error) {
-      throw new Error(`MiniMax provider error: ${error instanceof Error ? error.message : 'unknown'}`);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('MiniMax provider: unexpected error');
     }
   }
 
   async isAvailable(): Promise<boolean> {
     const apiKey = this.config.apiKey || getProviderSecret('minimax', 'apiKey');
-    const groupId = this.config.groupId || getProviderSecret('minimax', 'groupId');
-    return Boolean(apiKey && groupId);
+    return Boolean(apiKey);
   }
 }
