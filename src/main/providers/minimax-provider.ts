@@ -83,7 +83,6 @@ export class MiniMaxProvider implements AgentProvider {
           top_p: 0.95,
           max_completion_tokens: 512,
           stream: false,
-          ...context,
         }),
       });
 
