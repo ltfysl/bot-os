@@ -5,12 +5,14 @@ interface SidebarProps {
   agents: Agent[];
   activeAgentId: string;
   onAgentSelect: (agentId: string) => void;
+  onAgentsChange: () => void;
 }
 
 export default function Sidebar({
   agents,
   activeAgentId,
   onAgentSelect,
+  onAgentsChange,
 }: SidebarProps) {
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [showProviders, setShowProviders] = useState(false);
@@ -27,6 +29,7 @@ export default function Sidebar({
     if (activeAgentId) {
       await window.electronAPI.updateAgentProvider(activeAgentId, providerId);
       setShowProviders(false);
+      onAgentsChange();
     }
   };
 
