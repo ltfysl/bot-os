@@ -53,7 +53,33 @@ Secrets management enables users to provide API keys for third-party providers (
 - Screenshot: `secret-card-submitting.png`
 - Screenshot: `provider-now-available.png`
 
-### Path 3: Keyboard Shortcuts
+### Path 3: Write-Only Security (No Key Echo)
+
+**When to verify:** Changes to IPC security boundaries or SecretRequestCard
+
+**Steps:**
+1. Open SecretRequestCard for a provider
+2. Type a fake API key in the input field
+3. Observe input field shows bullets/dots (type=password)
+4. Submit the secret
+5. Verify card closes
+6. Open DevTools Console
+7. Try to access the secret value via any means (no get-secret IPC exists)
+8. Check chat transcript for any echo of the secret value
+
+**Expected behavior:**
+- Input field is `type="password"` (shows dots/bullets, not plaintext)
+- NO IPC method exists to read secrets back to renderer
+- Renderer never receives the actual secret value after submission
+- Secrets remain in main process only
+- No secret value echoed in UI or console
+- Password field prevents copy-paste visibility
+
+**Evidence:**
+- Screenshot: `secret-password-field.png` (showing masked input)
+- Console: Confirm no `getProviderSecret` method in `window.electronAPI`
+
+### Path 4: Keyboard Shortcuts
 
 **When to verify:** Changes to SecretRequestCard keyboard handlers
 
@@ -72,7 +98,7 @@ Secrets management enables users to provide API keys for third-party providers (
 **Evidence:**
 - (Behavioral test, no screenshot needed)
 
-### Path 4: Cancel Flow
+### Path 5: Cancel Flow
 
 **When to verify:** Changes to cancel/close logic
 
@@ -92,7 +118,7 @@ Secrets management enables users to provide API keys for third-party providers (
 **Evidence:**
 - Screenshot: `secret-card-cancel.png`
 
-### Path 5: Error Handling
+### Path 6: Error Handling
 
 **When to verify:** Changes to error display or secret validation
 
@@ -111,7 +137,7 @@ Secrets management enables users to provide API keys for third-party providers (
 **Evidence:**
 - Screenshot: `secret-card-error.png`
 
-### Path 6: Click Outside to Close
+### Path 7: Click Outside to Close
 
 **When to verify:** Changes to modal backdrop or click handlers
 
@@ -217,17 +243,23 @@ If you've changed code outside secrets but want to verify secrets work:
 
 ## IPC Calls Used
 
-- `window.electronAPI.setProviderSecret(providerId, key, value)` → `Promise<{ ok: boolean, error?: string }>`
+- `window.electronAPI.setProviderSecret(providerId, secretName, value)` → `Promise<{ ok: boolean, error?: string }>`
   - Stores a secret for a provider in main process
   - Returns `{ ok: true }` on success, `{ ok: false, error: string }` on failure
   - Never echoes the secret value back in the response
+  - **Current usage**: SecretRequestCard passes `secretName` as `'apiKey'`
 
-- `window.electronAPI.clearProviderSecret(providerId, key)` → `Promise<{ ok: boolean, cleared: boolean, error?: string }>`
+- `window.electronAPI.clearProviderSecret(providerId, secretName)` → `Promise<{ ok: boolean, cleared?: boolean, error?: string }>`
   - Removes a secret from main process storage
   - Returns `{ ok: true, cleared: true }` if secret existed and was removed
   - Returns `{ ok: true, cleared: false }` if secret did not exist
   - Returns `{ ok: false, error: string }` on validation errors
   - Never echoes the secret value back in the response
+
+**Parameter details:**
+- `providerId` - Provider identifier (e.g., `'minimax'`, `'zai'`)
+- `secretName` - Secret key name (currently `'apiKey'` for all providers)
+- `value` - Secret value (API key string)
 
 ## Security Notes
 
