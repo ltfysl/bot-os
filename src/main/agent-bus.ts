@@ -4,6 +4,7 @@ export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-fou
 
 export interface WakeFailureEvent {
   roomId?: string;
+  dmId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
   reason: WakeFailureReason;
@@ -13,6 +14,7 @@ export interface WakeFailureEvent {
 
 export interface WakeTimeoutEvent {
   roomId?: string;
+  dmId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
   timeoutMs: number;
@@ -312,7 +314,8 @@ export class AgentBus {
     initiatorAgentId: string,
     targetAgentId: string,
     message: string,
-    roomId?: string
+    roomId?: string,
+    dmId?: string
   ): Promise<void> {
     const initiator = this.agents.get(initiatorAgentId);
     if (!initiator) {
@@ -321,6 +324,7 @@ export class AgentBus {
         targetAgentId,
         initiatorAgentId,
         roomId,
+        dmId,
         reason: 'agent-not-found',
         errorMessage: error.message,
         timestamp: Date.now(),
@@ -335,6 +339,7 @@ export class AgentBus {
         targetAgentId,
         initiatorAgentId,
         roomId,
+        dmId,
         reason: 'agent-not-found',
         errorMessage: error.message,
         timestamp: Date.now(),
@@ -383,6 +388,7 @@ export class AgentBus {
       setTimeout(() => {
         this.emitWakeEvent({
           roomId,
+          dmId,
           initiatorAgentId,
           targetAgentId,
           timeoutMs: 5000,
@@ -410,6 +416,7 @@ export class AgentBus {
         }
         this.emitWakeEvent({
           roomId,
+          dmId,
           initiatorAgentId,
           targetAgentId,
           reason,
