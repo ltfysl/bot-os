@@ -71,7 +71,18 @@ app.whenReady().then(async () => {
     onWakeEvent: (event) => {
       if (!mainWindow) return;
       
-      if ('reason' in event && event.reason === 'timeout') {
+      if ('success' in event) {
+        mainWindow.webContents.send('wake-completion', {
+          roomId: event.roomId,
+          initiatorAgentId: event.initiatorAgentId,
+          targetAgentId: event.targetAgentId,
+          success: event.success,
+          reason: event.reason,
+          errorMessage: event.errorMessage,
+          timestamp: event.timestamp,
+          orderIndex: event.orderIndex,
+        });
+      } else if ('reason' in event && event.reason === 'timeout') {
         mainWindow.webContents.send('wake-timeout', {
           roomId: event.roomId,
           dmId: event.dmId,
@@ -653,6 +664,18 @@ ipcMain.handle('clear-room-unread', async (_event, roomId: string) => {
 ipcMain.handle('request-agent-wake', async (_event, initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string, dmId?: string) => {
   try {
     await agentBus.requestAgentWake(initiatorAgentId, targetAgentId, message, roomId, dmId);
+    return { success: true };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
+});
+
+ipcMain.handle('request-targeted-room-wake', async (_event, request: import('./agent-bus').TargetedWakeRequest) => {
+  try {
+    await agentBus.requestTargetedRoomWake(request);
     return { success: true };
   } catch (error) {
     return { 
