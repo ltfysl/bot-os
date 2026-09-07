@@ -3,7 +3,7 @@ import { Settings, Bot } from 'lucide-react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
 import SecretRequestCard from './SecretRequestCard';
-import type { Agent, Message, ProviderInfo, WidgetRequest } from '../types';
+import type { Agent, Message, ProviderInfo, WidgetRequest, StreamChunk } from '../types';
 
 interface ChatViewProps {
   agent?: Agent;
@@ -13,6 +13,15 @@ interface ChatViewProps {
 interface ResolvedWidget {
   id: string;
   summary: string;
+  timestamp: number;
+}
+
+interface StreamingMessage {
+  id: string;
+  agentId: string;
+  agentName: string;
+  agentAvatar: string;
+  content: string;
   timestamp: number;
 }
 
@@ -26,6 +35,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   const [widgetRequest, setWidgetRequest] = useState<WidgetRequest | null>(null);
   const [resolvedWidgets, setResolvedWidgets] = useState<ResolvedWidget[]>([]);
   const providerMenuRef = useRef<HTMLDivElement>(null);
+  const streamingMessagesRef = useRef<Map<string, StreamingMessage>>(new Map());
 
   useEffect(() => {
     if (agent) {
@@ -43,12 +53,45 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = window.electronAPI.onWakeResponse((message: Message) => {
+    const unsubscribeWakeResponse = window.electronAPI.onWakeResponse((message: Message) => {
       if (message.targetAgentId === agent?.id) {
         setMessages((prev) => [...prev, message]);
       }
     });
-    return () => unsubscribe();
+
+    const unsubscribeStreamChunk = window.electronAPI.onMessageStreamChunk((chunk: StreamChunk) => {
+      if (chunk.targetAgentId === agent?.id) {
+        handleStreamChunk(chunk);
+      }
+    });
+
+    const unsubscribeWakeStreamChunk = window.electronAPI.onWakeStreamChunk((chunk: StreamChunk) => {
+      if (chunk.targetAgentId === agent?.id) {
+        handleStreamChunk(chunk);
+      }
+    });
+
+    const unsubscribeStreamError = window.electronAPI.onMessageStreamError((error: { id: string; agentId: string; error: string }) => {
+      if (agent?.id && error.agentId === agent.id) {
+        const errorMessage: Message = {
+          id: error.id,
+          content: `Stream error: ${error.error}`,
+          role: 'assistant',
+          timestamp: Date.now(),
+          agentId: error.agentId,
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+        setIsLoading(false);
+        streamingMessagesRef.current.delete(error.id);
+      }
+    });
+
+    return () => {
+      unsubscribeWakeResponse();
+      unsubscribeStreamChunk();
+      unsubscribeWakeStreamChunk();
+      unsubscribeStreamError();
+    };
   }, [agent?.id]);
 
   useEffect(() => {
@@ -150,6 +193,47 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
     setMessages(seedsByAgent[agentId] || []);
   };
 
+  const handleStreamChunk = (chunk: StreamChunk) => {
+    const streaming = streamingMessagesRef.current.get(chunk.id);
+    
+    if (!streaming) {
+      const newStreaming: StreamingMessage = {
+        id: chunk.id,
+        agentId: chunk.agentId,
+        agentName: chunk.agentName,
+        agentAvatar: chunk.agentAvatar,
+        content: chunk.chunk,
+        timestamp: Date.now(),
+      };
+      streamingMessagesRef.current.set(chunk.id, newStreaming);
+      
+      setMessages((prev) => [...prev, {
+        id: chunk.id,
+        content: chunk.chunk,
+        role: 'assistant',
+        timestamp: newStreaming.timestamp,
+        agentId: chunk.agentId,
+        agentName: chunk.agentName,
+        agentAvatar: chunk.agentAvatar,
+      }]);
+    } else {
+      streaming.content += chunk.chunk;
+      
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === chunk.id
+            ? { ...msg, content: streaming.content }
+            : msg
+        )
+      );
+    }
+
+    if (chunk.done) {
+      streamingMessagesRef.current.delete(chunk.id);
+      setIsLoading(false);
+    }
+  };
+
   const handleSendMessage = async (content: string) => {
     if (!content.trim() || isLoading || !agent) return;
 
@@ -164,8 +248,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
     setIsLoading(true);
 
     try {
-      const primaryResponse = await window.electronAPI.sendMessage(agent.id, content);
-      setMessages((prev) => [...prev, primaryResponse]);
+      await window.electronAPI.sendMessageStream(agent.id, content);
     } catch (error) {
       console.error('Failed to send message:', error);
       const errorMessage: Message = {
@@ -175,7 +258,6 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, errorMessage]);
-    } finally {
       setIsLoading(false);
     }
   };

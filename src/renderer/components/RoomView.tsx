@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
-import type { Room, RoomMessage, Message } from '../types';
+import type { Room, RoomMessage, Message, RoomStreamChunk } from '../types';
 
 interface RoomViewProps {
   room: Room;
@@ -9,10 +9,21 @@ interface RoomViewProps {
   onRoomUpdate?: () => void;
 }
 
+interface StreamingRoomMessage {
+  id: string;
+  roomId: string;
+  agentId: string;
+  agentName: string;
+  agentAvatar: string;
+  content: string;
+  timestamp: number;
+}
+
 export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) {
   const [messages, setMessages] = useState<RoomMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingTimeoutId, setLoadingTimeoutId] = useState<number | undefined>(undefined);
+  const streamingMessagesRef = useRef<Map<string, StreamingRoomMessage>>(new Map());
 
   useEffect(() => {
     loadMessages();
@@ -20,7 +31,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
   }, [room.id]);
 
   useEffect(() => {
-    const unsubscribe = window.electronAPI.onRoomFanInResponse((message: RoomMessage) => {
+    const unsubscribeFanIn = window.electronAPI.onRoomFanInResponse((message: RoomMessage) => {
       if (message.roomId === room.id) {
         setMessages((prev) => [...prev, message]);
         setIsLoading(false);
@@ -32,7 +43,17 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
         onRoomUpdate?.();
       }
     });
-    return () => unsubscribe();
+
+    const unsubscribeStreamChunk = window.electronAPI.onRoomStreamChunk((chunk: RoomStreamChunk) => {
+      if (chunk.roomId === room.id) {
+        handleRoomStreamChunk(chunk);
+      }
+    });
+
+    return () => {
+      unsubscribeFanIn();
+      unsubscribeStreamChunk();
+    };
   }, [room.id, onRoomUpdate, loadingTimeoutId]);
 
   const loadMessages = async () => {
@@ -43,6 +64,53 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
   const clearUnread = async () => {
     await window.electronAPI.clearRoomUnread(room.id);
     onRoomUpdate?.();
+  };
+
+  const handleRoomStreamChunk = (chunk: RoomStreamChunk) => {
+    const streaming = streamingMessagesRef.current.get(chunk.id);
+    
+    if (!streaming) {
+      const newStreaming: StreamingRoomMessage = {
+        id: chunk.id,
+        roomId: chunk.roomId,
+        agentId: chunk.agentId,
+        agentName: chunk.agentName,
+        agentAvatar: chunk.agentAvatar,
+        content: chunk.chunk,
+        timestamp: Date.now(),
+      };
+      streamingMessagesRef.current.set(chunk.id, newStreaming);
+      
+      setMessages((prev) => [...prev, {
+        id: chunk.id,
+        roomId: chunk.roomId,
+        content: chunk.chunk,
+        role: 'assistant',
+        timestamp: newStreaming.timestamp,
+        agentId: chunk.agentId,
+        agentName: chunk.agentName,
+        agentAvatar: chunk.agentAvatar,
+      }]);
+    } else {
+      streaming.content += chunk.chunk;
+      
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === chunk.id
+            ? { ...msg, content: streaming.content }
+            : msg
+        )
+      );
+    }
+
+    if (chunk.done) {
+      streamingMessagesRef.current.delete(chunk.id);
+      setIsLoading(false);
+      if (loadingTimeoutId) {
+        clearTimeout(loadingTimeoutId);
+        setLoadingTimeoutId(undefined);
+      }
+    }
   };
 
   const handleSendMessage = async (content: string) => {
@@ -72,7 +140,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
     }
 
     try {
-      const response = await window.electronAPI.sendRoomMessage(
+      const response = await window.electronAPI.sendRoomMessageStream(
         room.id, 
         content
       );
