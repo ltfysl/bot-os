@@ -307,6 +307,16 @@ BotOS ships with the following provider implementations:
 - **Implementation:** `src/main/providers/openai-provider.ts`
 - **Key Resolution:** `config.apiKey || getProviderSecret('openai','apiKey') || process.env.OPENAI_API_KEY`
 
+### xAI Grok
+- **Provider ID:** `xai`
+- **Default Model:** `grok-2-latest`
+- **Endpoint:** `https://api.x.ai/v1/chat/completions` (OpenAI-compatible)
+- **Environment Variable:** `XAI_API_KEY`
+- **Configuration:** Optional `XAI_BASE_URL` override
+- **Implementation:** `src/main/providers/xai-provider.ts`
+- **Key Resolution:** `config.apiKey || getProviderSecret('xai','apiKey') || process.env.XAI_API_KEY`
+- **Note:** Uses OpenAI-compatible chat completions interface
+
 ### Anthropic Claude
 - **Provider ID:** `anthropic`
 - **Default Model:** `claude-sonnet-4-20250514`
