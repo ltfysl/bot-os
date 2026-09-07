@@ -7,7 +7,7 @@ import { ZaiProvider } from './providers/zai-provider';
 import { CodingPlanProvider } from './providers/coding-plan-provider';
 import { AnthropicProvider } from './providers/anthropic-provider';
 import { RoutineManager, Routine, RoutineCreateInput, RoutineUpdateInput } from './routines';
-import { setProviderSecret, clearProviderSecret } from './secrets';
+import { setProviderSecret, clearProviderSecret, loadPersistedSecrets } from './secrets';
 import { RoomManager, Room } from './rooms';
 
 let mainWindow: BrowserWindow | null = null;
@@ -42,7 +42,9 @@ function createWindow(): void {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await loadPersistedSecrets();
+
   agentBus = new AgentBus({
     providers: [
       new MockEchoProvider(),
@@ -227,7 +229,7 @@ ipcMain.handle('set-provider-secret', async (_event, providerId: string, secretN
       return { ok: false, error: 'Invalid value' };
     }
 
-    setProviderSecret(providerId, secretName, value);
+    await setProviderSecret(providerId, secretName, value);
     
     return { ok: true };
   } catch (error) {
@@ -244,7 +246,7 @@ ipcMain.handle('clear-provider-secret', async (_event, providerId: string, secre
       return { ok: false, error: 'Invalid secretName' };
     }
 
-    const cleared = clearProviderSecret(providerId, secretName);
+    const cleared = await clearProviderSecret(providerId, secretName);
     
     return { ok: true, cleared };
   } catch (error) {

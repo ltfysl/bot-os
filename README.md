@@ -216,6 +216,37 @@ The provider will automatically become available when a valid key is present. Wi
 
 **Get your API key:** Visit [Anthropic Console](https://console.anthropic.com/) to create an account and generate an API key.
 
+#### Provider Secret Persistence
+
+Provider secrets set via the in-app SecretRequestCard (displayed when a provider needs credentials) are now **persisted across restarts** using Electron's `safeStorage` API.
+
+**How it works:**
+- Secrets are encrypted at rest using OS-backed encryption:
+  - **macOS**: Keychain
+  - **Windows**: Credential Store  
+  - **Linux**: Secret Service
+- Encrypted secrets stored at `<userData>/secrets.enc`
+- Automatically loaded on app startup (after `app.whenReady()`)
+- Write-only from renderer: no `getProviderSecret` exposed to UI
+- Environment variables still work as fallback (take precedence when set)
+
+**Security properties:**
+- No plaintext secrets outside main process
+- Encrypted file stored in sandboxed userData directory
+- Refuses persistence if OS encryption unavailable
+- No key echo in IPC, logs, or renderer
+
+**Setting secrets:**
+1. Launch app
+2. Select provider that needs credentials
+3. Enter API key in SecretRequestCard modal
+4. Key is encrypted and saved automatically
+5. Provider becomes available immediately
+6. Key persists across app restarts
+
+**Clearing secrets:**
+Currently done by manually deleting `<userData>/secrets.enc` file. Future UI for clear operation may be added.
+
 ### IPC Communication
 
 Secure IPC via `contextBridge` in preload script:
