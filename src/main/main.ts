@@ -131,7 +131,74 @@ app.on('before-quit', () => {
   }
 });
 
+const widgetTriggers = {
+  'single-select': {
+    keywords: ['pick one', 'choose one', 'single option'],
+    generator: () => ({
+      id: `widget-${Date.now()}`,
+      type: 'single-select' as const,
+      title: 'Choose your preferred option',
+      options: [
+        { id: 'opt1', label: 'Option A' },
+        { id: 'opt2', label: 'Option B' },
+        { id: 'opt3', label: 'Option C' },
+      ],
+    }),
+  },
+  'multi-select': {
+    keywords: ['select multiple', 'pick several', 'choose multiple'],
+    generator: () => ({
+      id: `widget-${Date.now()}`,
+      type: 'multi-select' as const,
+      title: 'Select all that apply',
+      options: [
+        { id: 'feature1', label: 'Add authentication' },
+        { id: 'feature2', label: 'Improve UI design' },
+        { id: 'feature3', label: 'Add tests' },
+        { id: 'feature4', label: 'Update documentation' },
+      ],
+    }),
+  },
+  'danger': {
+    keywords: ['delete', 'remove', 'dangerous action'],
+    generator: () => ({
+      id: `widget-${Date.now()}`,
+      type: 'danger' as const,
+      title: 'This action is destructive',
+      options: [
+        { id: 'proceed', label: 'Proceed anyway' },
+        { id: 'cancel', label: 'Cancel safely' },
+      ],
+    }),
+  },
+  'allow-custom': {
+    keywords: ['custom input', 'enter value', 'allow custom'],
+    generator: () => ({
+      id: `widget-${Date.now()}`,
+      type: 'allow-custom' as const,
+      title: 'Choose or enter custom value',
+      options: [
+        { id: 'preset1', label: 'Use default configuration' },
+        { id: 'preset2', label: 'Use advanced settings' },
+        { id: 'preset3', label: 'Skip this step' },
+      ],
+    }),
+  },
+};
+
 ipcMain.handle('send-message', async (event, agentId: string, message: string) => {
+  const messageLower = message.toLowerCase();
+  
+  for (const [_type, trigger] of Object.entries(widgetTriggers)) {
+    if (trigger.keywords.some(keyword => messageLower.includes(keyword))) {
+      const widgetRequest = trigger.generator();
+      setTimeout(() => {
+        event.sender.send('widget-request', widgetRequest);
+      }, 800);
+      break;
+    }
+  }
+
   const primary = await agentBus.sendMessageWithWake(
     message,
     agentId,
@@ -381,3 +448,8 @@ function extractRoomMentions(message: string, memberAgentIds: string[]): string[
   }
   return agentIds;
 }
+
+ipcMain.handle('respond-to-widget', async (_event, response) => {
+  console.log('Widget response received:', response);
+  return;
+});

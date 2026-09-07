@@ -3,7 +3,7 @@ import { Settings, Bot } from 'lucide-react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
 import SecretRequestCard from './SecretRequestCard';
-import type { Agent, Message, ProviderInfo } from '../types';
+import type { Agent, Message, ProviderInfo, WidgetRequest } from '../types';
 
 interface ChatViewProps {
   agent?: Agent;
@@ -17,6 +17,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   const [showProviders, setShowProviders] = useState(false);
   const [showSecretCard, setShowSecretCard] = useState(false);
   const [secretCardProvider, setSecretCardProvider] = useState<{ id: string; name: string } | null>(null);
+  const [widgetRequest, setWidgetRequest] = useState<WidgetRequest | null>(null);
   const providerMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,6 +43,13 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
     });
     return () => unsubscribe();
   }, [agent?.id]);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onWidgetRequest((request: WidgetRequest) => {
+      setWidgetRequest(request);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -83,6 +91,10 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   const handleSecretSuccess = async () => {
     await loadProviders();
     onAgentsChange();
+  };
+
+  const handleWidgetResolve = () => {
+    setWidgetRequest(null);
   };
   const loadSeedMessages = (agentId: string) => {
     const seedsByAgent: Record<string, Message[]> = {
@@ -202,7 +214,14 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
         </div>
       </div>
       <div className="chat-container">
-        <MessageList messages={messages} isLoading={isLoading} agentName={agent.name} agentAvatar={agent.avatar} />
+        <MessageList 
+          messages={messages} 
+          isLoading={isLoading} 
+          agentName={agent.name} 
+          agentAvatar={agent.avatar}
+          widgetRequest={widgetRequest}
+          onWidgetResolve={handleWidgetResolve}
+        />
       </div>
       <MessageComposer onSend={handleSendMessage} disabled={isLoading} />
       

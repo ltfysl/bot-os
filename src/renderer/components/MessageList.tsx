@@ -1,12 +1,15 @@
 import { useEffect, useRef } from 'react';
 import { User, Bot, MessageSquare } from 'lucide-react';
-import type { Message } from '../types';
+import WidgetCard from './WidgetCard';
+import type { Message, WidgetRequest, WidgetResponse } from '../types';
 
 interface MessageListProps {
   messages: Message[];
   isLoading: boolean;
   agentName?: string;
   agentAvatar?: string;
+  widgetRequest?: WidgetRequest | null;
+  onWidgetResolve?: (response: WidgetResponse) => void;
 }
 
 function parseInlineCode(text: string): (string | JSX.Element)[] {
@@ -37,12 +40,12 @@ function parseInlineCode(text: string): (string | JSX.Element)[] {
   return parts.length > 0 ? parts : [text];
 }
 
-export default function MessageList({ messages, isLoading, agentName, agentAvatar }: MessageListProps) {
+export default function MessageList({ messages, isLoading, agentName, agentAvatar, widgetRequest, onWidgetResolve }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, widgetRequest]);
 
   if (messages.length === 0) {
     return (
@@ -105,6 +108,16 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
           </div>
         );
       })}
+      {widgetRequest && onWidgetResolve && (
+        <div className="message assistant">
+          <div className="message-avatar">
+            {renderAvatar('assistant', lastAssistantMessage?.agentAvatar || agentAvatar)}
+          </div>
+          <div className="message-content">
+            <WidgetCard request={widgetRequest} onResolve={onWidgetResolve} />
+          </div>
+        </div>
+      )}
       {isLoading && (
         <div className="message assistant">
           <div className="message-avatar">

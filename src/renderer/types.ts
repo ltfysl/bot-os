@@ -83,6 +83,27 @@ export interface RoomMessage {
   agentAvatar?: string;
 }
 
+export type WidgetType = 'single-select' | 'multi-select' | 'danger' | 'allow-custom';
+
+export interface WidgetOption {
+  id: string;
+  label: string;
+}
+
+export interface WidgetRequest {
+  id: string;
+  type: WidgetType;
+  title?: string;
+  options: WidgetOption[];
+}
+
+export interface WidgetResponse {
+  widgetId: string;
+  selected: string[];
+  customValue?: string;
+  dismissed: boolean;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -110,6 +131,8 @@ declare global {
       sendRoomMessage: (roomId: string, content: string, senderId?: string) => Promise<RoomMessage>;
       clearRoomUnread: (roomId: string) => Promise<{ success: boolean }>;
       onRoomFanInResponse: (callback: (message: RoomMessage) => void) => (() => void);
+      onWidgetRequest: (callback: (request: WidgetRequest) => void) => (() => void);
+      respondToWidget: (response: WidgetResponse) => Promise<void>;
     };
   }
 }
