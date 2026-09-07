@@ -170,7 +170,6 @@ export class GeminiProvider implements AgentProvider {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
-      let fullContent = '';
 
       while (true) {
         const { done, value } = await reader.read();
@@ -195,7 +194,6 @@ export class GeminiProvider implements AgentProvider {
 
             const chunk = data.choices?.[0]?.delta?.content;
             if (chunk) {
-              fullContent += chunk;
               onChunk(chunk, false);
             }
           } catch (parseError) {
@@ -204,7 +202,7 @@ export class GeminiProvider implements AgentProvider {
         }
       }
 
-      onChunk(fullContent, true);
+      onChunk('', true);
     } catch (error) {
       if (error instanceof Error) {
         throw error;
