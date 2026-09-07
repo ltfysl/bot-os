@@ -92,6 +92,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
           content: 'Ready when you are',
           role: 'assistant',
           timestamp: Date.now() - 120000,
+          agentAvatar: agent?.avatar,
         },
       ],
       '2': [
@@ -100,6 +101,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
           content: 'What are we researching today?',
           role: 'assistant',
           timestamp: Date.now() - 90000,
+          agentAvatar: agent?.avatar,
         },
       ],
       '3': [
@@ -108,6 +110,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
           content: 'Standing by for code work',
           role: 'assistant',
           timestamp: Date.now() - 60000,
+          agentAvatar: agent?.avatar,
         },
       ],
     };

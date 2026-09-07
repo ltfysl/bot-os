@@ -127,7 +127,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
     if (avatar && avatar.length <= 3 && /^[A-Z]{1,3}$/.test(avatar)) {
       return avatar;
     }
-    return avatar.substring(0, 2).toUpperCase();
+    return avatar.length >= 2 ? avatar.substring(0, 2).toUpperCase() : 'AG';
   };
 
   const lastAssistantMessage = messages.slice().reverse().find(m => m.role === 'assistant');
