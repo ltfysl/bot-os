@@ -1,7 +1,13 @@
 import { useEffect, useRef } from 'react';
-import { User, Bot, MessageSquare } from 'lucide-react';
+import { User, Bot, MessageSquare, Check } from 'lucide-react';
 import WidgetCard from './WidgetCard';
-import type { Message, WidgetRequest, WidgetResponse } from '../types';
+import type { Message, WidgetRequest } from '../types';
+
+interface ResolvedWidget {
+  id: string;
+  summary: string;
+  timestamp: number;
+}
 
 interface MessageListProps {
   messages: Message[];
@@ -9,7 +15,8 @@ interface MessageListProps {
   agentName?: string;
   agentAvatar?: string;
   widgetRequest?: WidgetRequest | null;
-  onWidgetResolve?: (response: WidgetResponse) => void;
+  resolvedWidgets?: ResolvedWidget[];
+  onWidgetResolve?: (response: { selected: string[]; customValue?: string; dismissed: boolean }) => void;
 }
 
 function parseInlineCode(text: string): (string | JSX.Element)[] {
@@ -40,27 +47,18 @@ function parseInlineCode(text: string): (string | JSX.Element)[] {
   return parts.length > 0 ? parts : [text];
 }
 
-export default function MessageList({ messages, isLoading, agentName, agentAvatar, widgetRequest, onWidgetResolve }: MessageListProps) {
+export default function MessageList({ messages, isLoading, agentName, agentAvatar, widgetRequest, resolvedWidgets = [], onWidgetResolve }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, widgetRequest]);
 
-  if (messages.length === 0) {
-    return (
-      <div className="chat-messages">
-        <div className="empty-state">
-          <MessageSquare size={32} strokeWidth={1.5} className="empty-icon" />
-          <div className="empty-title">No messages yet</div>
-        </div>
-      </div>
-    );
-  }
-
   const lastAssistantMessage = messages.filter((m) => m.role === 'assistant').at(-1);
   const hasAssistantMessage = lastAssistantMessage !== undefined;
   const useNeutralChrome = !hasAssistantMessage && !agentName && !agentAvatar;
+
+  const showEmptyState = messages.length === 0 && !widgetRequest && !isLoading;
 
   const renderAvatar = (role: 'user' | 'assistant', avatarText?: string, forceNeutral = false) => {
     if (role === 'user') {
@@ -80,6 +78,12 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
 
   return (
     <div className="chat-messages">
+      {showEmptyState && (
+        <div className="empty-state">
+          <MessageSquare size={32} strokeWidth={1.5} className="empty-icon" />
+          <div className="empty-title">No messages yet</div>
+        </div>
+      )}
       {messages.map((message) => {
         const displayName = message.role === 'user' 
           ? 'You' 
@@ -108,6 +112,21 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
           </div>
         );
       })}
+      {resolvedWidgets.map((resolved) => (
+        <div key={resolved.id} className="message assistant">
+          <div className="message-avatar">
+            {renderAvatar('assistant', lastAssistantMessage?.agentAvatar || agentAvatar)}
+          </div>
+          <div className="message-content">
+            <div className="widget-card resolved">
+              <div className="widget-resolved-header">
+                <Check size={14} strokeWidth={2} className="widget-resolved-icon" />
+                <span className="widget-resolved-text">{resolved.summary}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
       {widgetRequest && onWidgetResolve && (
         <div className="message assistant">
           <div className="message-avatar">

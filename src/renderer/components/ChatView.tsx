@@ -10,6 +10,12 @@ interface ChatViewProps {
   onAgentsChange: () => void;
 }
 
+interface ResolvedWidget {
+  id: string;
+  summary: string;
+  timestamp: number;
+}
+
 export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -18,6 +24,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   const [showSecretCard, setShowSecretCard] = useState(false);
   const [secretCardProvider, setSecretCardProvider] = useState<{ id: string; name: string } | null>(null);
   const [widgetRequest, setWidgetRequest] = useState<WidgetRequest | null>(null);
+  const [resolvedWidgets, setResolvedWidgets] = useState<ResolvedWidget[]>([]);
   const providerMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -93,7 +100,21 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
     onAgentsChange();
   };
 
-  const handleWidgetResolve = () => {
+  const handleWidgetResolve = (response: { selected: string[]; customValue?: string; dismissed: boolean }) => {
+    if (!response.dismissed && widgetRequest) {
+      const resolvedSummary = response.customValue?.trim() 
+        ? response.customValue 
+        : response.selected
+            .map(id => widgetRequest.options.find(opt => opt.id === id)?.label)
+            .filter(Boolean)
+            .join(', ');
+
+      setResolvedWidgets((prev) => [...prev, {
+        id: widgetRequest.id,
+        summary: resolvedSummary,
+        timestamp: Date.now(),
+      }]);
+    }
     setWidgetRequest(null);
   };
   const loadSeedMessages = (agentId: string) => {
@@ -220,6 +241,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
           agentName={agent.name} 
           agentAvatar={agent.avatar}
           widgetRequest={widgetRequest}
+          resolvedWidgets={resolvedWidgets}
           onWidgetResolve={handleWidgetResolve}
         />
       </div>

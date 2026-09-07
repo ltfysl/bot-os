@@ -4,7 +4,7 @@ import type { WidgetRequest, WidgetResponse } from '../types';
 
 interface WidgetCardProps {
   request: WidgetRequest;
-  onResolve: (response: WidgetResponse) => void;
+  onResolve: (response: { selected: string[]; customValue?: string; dismissed: boolean }) => void;
 }
 
 export default function WidgetCard({ request, onResolve }: WidgetCardProps) {
@@ -35,7 +35,7 @@ export default function WidgetCard({ request, onResolve }: WidgetCardProps) {
       try {
         await window.electronAPI.respondToWidget(response);
         setIsResolved(true);
-        setTimeout(() => onResolve(response), 300);
+        onResolve({ selected: [optionId], dismissed: false });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to submit response');
         setIsSubmitting(false);
@@ -72,7 +72,11 @@ export default function WidgetCard({ request, onResolve }: WidgetCardProps) {
     try {
       await window.electronAPI.respondToWidget(response);
       setIsResolved(true);
-      setTimeout(() => onResolve(response), 300);
+      onResolve({
+        selected: Array.from(selected),
+        customValue: customValue.trim() || undefined,
+        dismissed: false,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit response');
       setIsSubmitting(false);
@@ -82,13 +86,7 @@ export default function WidgetCard({ request, onResolve }: WidgetCardProps) {
   const handleDismiss = () => {
     if (isSubmitting || isResolved) return;
 
-    const response: WidgetResponse = {
-      widgetId: request.id,
-      selected: [],
-      dismissed: true,
-    };
-
-    onResolve(response);
+    onResolve({ selected: [], dismissed: true });
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -145,18 +143,7 @@ export default function WidgetCard({ request, onResolve }: WidgetCardProps) {
   };
 
   if (isResolved) {
-    return (
-      <div className="widget-card resolved">
-        <div className="widget-resolved-header">
-          <Check size={14} strokeWidth={2} className="widget-resolved-icon" />
-          <span className="widget-resolved-text">
-            {customValue.trim() 
-              ? customValue 
-              : Array.from(selected).map(id => options.find(opt => opt.id === id)?.label).filter(Boolean).join(', ')}
-          </span>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (
