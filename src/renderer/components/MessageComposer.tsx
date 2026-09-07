@@ -1,14 +1,18 @@
 import { useState, useRef, KeyboardEvent } from 'react';
-import { Paperclip } from 'lucide-react';
+import { Paperclip, Square } from 'lucide-react';
 
 interface MessageComposerProps {
   onSend: (message: string) => void;
+  onStop?: () => void;
   disabled?: boolean;
+  isStreaming?: boolean;
 }
 
 export default function MessageComposer({
   onSend,
+  onStop,
   disabled = false,
+  isStreaming = false,
 }: MessageComposerProps) {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -79,13 +83,23 @@ export default function MessageComposer({
           >
             <Paperclip size={16} strokeWidth={2} />
           </button>
-          <button
-            className="compose-send"
-            onClick={handleSend}
-            disabled={!message.trim() || disabled}
-          >
-            Send
-          </button>
+          {isStreaming && onStop ? (
+            <button
+              className="compose-stop"
+              onClick={onStop}
+              title="Stop streaming"
+            >
+              <Square size={14} strokeWidth={2} fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              className="compose-send"
+              onClick={handleSend}
+              disabled={!message.trim() || disabled}
+            >
+              Send
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -518,6 +518,29 @@ code, .path {
   color: #ef4444;
 }
 
+.message-text.streaming {
+  position: relative;
+}
+
+.streaming-caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  background: var(--text-primary);
+  animation: blink 1s step-end infinite;
+  vertical-align: text-bottom;
+}
+
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
 /* COMPACT COMPOSER */
 .compose-container {
   padding: 10px 16px 12px;
@@ -604,6 +627,26 @@ code, .path {
   background: linear-gradient(135deg, var(--accent-quiet) 0%, var(--accent-hover) 100%);
   transform: none;
   box-shadow: none;
+}
+
+.compose-stop {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  border-radius: 4px;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.compose-stop:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.compose-stop:active {
+  background: var(--bg-active);
 }
 
 .empty-state {
