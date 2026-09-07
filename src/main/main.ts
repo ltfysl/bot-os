@@ -66,6 +66,38 @@ app.whenReady().then(async () => {
       new XAIProvider(),
     ],
     defaultProviderId: 'mock-intelligent',
+    maxConcurrentWakes: 10,
+    wakeQueueLimit: 50,
+    onWakeEvent: (event) => {
+      if (!mainWindow) return;
+      
+      if ('reason' in event && event.reason === 'timeout') {
+        mainWindow.webContents.send('wake-timeout', {
+          roomId: event.roomId,
+          initiatorAgentId: event.initiatorAgentId,
+          targetAgentId: event.targetAgentId,
+          timeoutMs: 5000,
+          timestamp: event.timestamp,
+        });
+      } else if ('denialReason' in event) {
+        mainWindow.webContents.send('wake-membership-denied', {
+          roomId: event.roomId,
+          initiatorAgentId: event.initiatorAgentId,
+          targetAgentId: event.targetAgentId,
+          denialReason: event.denialReason,
+          timestamp: event.timestamp,
+        });
+      } else if ('reason' in event) {
+        mainWindow.webContents.send('wake-failure', {
+          roomId: event.roomId,
+          initiatorAgentId: event.initiatorAgentId,
+          targetAgentId: event.targetAgentId,
+          reason: event.reason,
+          errorMessage: event.errorMessage,
+          timestamp: event.timestamp,
+        });
+      }
+    },
   });
 
   agentBus.registerAgent({
