@@ -2,6 +2,7 @@
 
 Date: 2026-09-07
 Branch: cursor/persist-provider-secrets-977a
+PR: #25 (https://github.com/ltfysl/bot-os/pull/25)
 
 ## Problem
 `src/main/secrets.ts` was RAM-only — keys set via SecretRequestCard died on app restart. Env vars still worked; in-app card keys did not.
