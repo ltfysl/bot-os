@@ -132,22 +132,37 @@ Implemented real file attachment upload for BotOS, replacing the no-op paperclip
 
 ```bash
 # Type check
-npm run type-check
+npm run type-check  ✅ PASSED
 
 # Build
-npm run build
+npm run build  ✅ PASSED
 
-# Run app (manual testing required)
-npm start
+# Run app (requires display/GPU - not available in cloud environment)
+npm start  ⚠️ SKIPPED (headless VM - GPU/display errors expected)
 ```
+
+## Environment Constraints
+
+This verification was performed in a cloud agent environment without display/GPU capabilities. The app requires a graphical environment to test the Electron UI. The following automated checks passed:
+
+- ✅ TypeScript type checking (no errors)
+- ✅ Production build (Vite + tsc compilation successful)
+- ✅ Code review (implementation follows patterns)
+
+Manual UI testing should be performed on a local development machine with display to verify:
+- File picker dialog appears
+- Attachment chips render correctly
+- Remove buttons function
+- Attachments persist in messages
 
 ## PR Readiness
 
 - ✅ Code committed and pushed
 - ✅ Type check passes
 - ✅ Build succeeds
-- 🔄 Manual verification pending (requires `npm start`)
-- 🔄 PR draft created, will undraft after manual testing
+- ✅ Implementation reviewed
+- ⚠️ Manual UI verification pending (requires display environment)
+- 🔄 PR remains draft until UI verification
 
 ## Next Steps
 
