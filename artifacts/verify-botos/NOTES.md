@@ -27,7 +27,7 @@ This file contains summaries and quick links to verification evidence for BotOS 
 - ✅ No `getProviderSecret` in preload.ts (write-only IPC)
 - ✅ Key resolution formula: `config.apiKey || getProviderSecret('openai','apiKey') || process.env.OPENAI_API_KEY`
 - ✅ Dual env var support: `OPENAI_API_KEY` (primary) + `OPENAI_APIKEY` (alternative via secrets.ts)
-- ✅ `isAvailable()` checks secret presence (dry/mock-safe without key)
+- ✅ `hasSecret` matches `isAvailable()`: checks both `hasProviderSecret('openai','apiKey')` OR `process.env.OPENAI_API_KEY`
 - ✅ IPC responses never echo API keys
 
 **Documentation:**

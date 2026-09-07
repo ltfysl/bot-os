@@ -263,7 +263,7 @@ export class AgentBus {
     }
     
     if (providerId === 'openai') {
-      return hasProviderSecret('openai', 'apiKey');
+      return hasProviderSecret('openai', 'apiKey') || Boolean(process.env.OPENAI_API_KEY);
     }
     
     return false;
