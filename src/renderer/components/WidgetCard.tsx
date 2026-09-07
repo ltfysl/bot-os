@@ -1,5 +1,5 @@
 import { useState, KeyboardEvent } from 'react';
-import { Check, X } from 'lucide-react';
+import { Check } from 'lucide-react';
 import type { WidgetRequest, WidgetResponse } from '../types';
 
 interface WidgetCardProps {
@@ -189,7 +189,7 @@ export default function WidgetCard({ request, onResolve }: WidgetCardProps) {
         </button>
         {(type === 'multi-select' || type === 'allow-custom') && (
           <button
-            className={`widget-confirm ${type === 'danger' ? 'danger' : ''}`}
+            className="widget-confirm"
             onClick={handleConfirm}
             disabled={(selected.size === 0 && !customValue.trim()) || isSubmitting || isResolved}
           >
