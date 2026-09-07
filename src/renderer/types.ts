@@ -9,6 +9,27 @@ export interface Message {
   targetAgentId?: string;
 }
 
+export interface StreamChunk {
+  id: string;
+  agentId: string;
+  agentName: string;
+  agentAvatar: string;
+  chunk: string;
+  done: boolean;
+  targetAgentId?: string;
+}
+
+export interface StreamResponse {
+  id: string;
+  agentId: string;
+  streaming: boolean;
+}
+
+export interface WakeResult {
+  success: boolean;
+  error?: string;
+}
+
 export interface Channel {
   id: string;
   name: string;
@@ -83,6 +104,16 @@ export interface RoomMessage {
   agentAvatar?: string;
 }
 
+export interface RoomStreamChunk {
+  id: string;
+  roomId: string;
+  agentId: string;
+  agentName: string;
+  agentAvatar: string;
+  chunk: string;
+  done: boolean;
+}
+
 export type WidgetType = 'single-select' | 'multi-select' | 'danger' | 'allow-custom';
 
 export interface WidgetOption {
@@ -108,7 +139,12 @@ declare global {
   interface Window {
     electronAPI: {
       sendMessage: (agentId: string, message: string) => Promise<Message>;
+      sendMessageStream: (agentId: string, message: string) => Promise<StreamResponse>;
+      onMessageStreamChunk: (callback: (chunk: StreamChunk) => void) => (() => void);
+      onWakeStreamChunk: (callback: (chunk: StreamChunk) => void) => (() => void);
+      onMessageStreamError: (callback: (error: { id: string; agentId: string; error: string }) => void) => (() => void);
       onWakeResponse: (callback: (message: Message) => void) => (() => void);
+      requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string) => Promise<WakeResult>;
       getChannels: () => Promise<Channel[]>;
       getAgents: () => Promise<Agent[]>;
       listProviders: () => Promise<ProviderInfo[]>;
@@ -129,6 +165,8 @@ declare global {
       deleteRoom: (roomId: string) => Promise<boolean>;
       getRoomMessages: (roomId: string) => Promise<RoomMessage[]>;
       sendRoomMessage: (roomId: string, content: string, senderId?: string) => Promise<RoomMessage>;
+      sendRoomMessageStream: (roomId: string, content: string, senderId?: string) => Promise<RoomMessage>;
+      onRoomStreamChunk: (callback: (chunk: RoomStreamChunk) => void) => (() => void);
       clearRoomUnread: (roomId: string) => Promise<{ success: boolean }>;
       onRoomFanInResponse: (callback: (message: RoomMessage) => void) => (() => void);
       onWidgetRequest: (callback: (request: WidgetRequest) => void) => (() => void);

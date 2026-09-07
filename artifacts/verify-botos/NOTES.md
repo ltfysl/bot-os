@@ -4,6 +4,35 @@ This file contains summaries and quick links to verification evidence for BotOS 
 
 ---
 
+## PR #30 - Bus Depth: Streaming Fan-In & Bot-Initiated Wake
+
+**Branch:** `cursor/bus-depth-streaming-bot-wake-c35d`  
+**PR:** https://github.com/ltfysl/bot-os/pull/30  
+**Date:** 2026-09-07  
+**Status:** ✅ Build Pass, ✅ Code Verified, ⚠️ GUI Unavailable  
+
+**What changed:**
+- Extended `AgentProvider` with optional `sendMessageStream` for streaming responses
+- Implemented `sendMessageWithWakeStream` in `AgentBus` for non-blocking streaming
+- Added IPC events: `message-stream-chunk`, `wake-stream-chunk`, `room-stream-chunk`
+- Added `requestAgentWake` API for bot-initiated wakes with room membership validation
+- IPC handler: `request-agent-wake` (write-only, no secrets)
+- Mock-safe: providers without streaming fall back to single chunk
+
+**Build checks:**
+- ✅ `npm install` - 317 packages, no errors
+- ✅ `npm run type-check` - TypeScript compilation clean
+- ✅ `npm run build` - Main + renderer builds successful
+
+**Security verification:**
+- ✅ No secrets in IPC responses or preload get paths
+- ✅ Bot wake validation: room membership checks for both agents
+- ✅ Timeout + attribution match existing wake behavior (5s)
+
+**Details:** [bus-depth-streaming-wake-verification.md](./bus-depth-streaming-wake-verification.md)
+
+---
+
 ## PR #29 - Inline Question Widgets
 
 **Branch:** `cursor/inline-question-widgets-d5be`  
@@ -120,6 +149,7 @@ This file contains summaries and quick links to verification evidence for BotOS 
 **Details:** [link-to-detailed-verification.md](./filename.md)
 
 ---
+<<<<<<< HEAD
 
 # Detailed Widget System Components (PR #29)
 
@@ -183,3 +213,5 @@ This file contains summaries and quick links to verification evidence for BotOS 
 
 1. **Resolved state persistence** - Widget collapses to durable checked summary that stays visible in transcript
 2. **Empty chat rendering** - Widgets render even when `messages.length === 0` (removed early return)
+=======
+>>>>>>> 4ba465e (docs: Add verification artifacts for bus depth PR)
