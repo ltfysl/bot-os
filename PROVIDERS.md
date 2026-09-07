@@ -293,6 +293,52 @@ See `src/main/providers/minimax-provider.ts` for a complete reference implementa
 - ✅ Integrates cleanly with AgentBus
 - ✅ Includes verification script
 
+## Current Providers
+
+BotOS ships with the following provider implementations:
+
+### OpenAI
+- **Provider ID:** `openai`
+- **Default Model:** `gpt-4o-mini`
+- **Endpoint:** `https://api.openai.com/v1/chat/completions`
+- **Environment Variable:** `OPENAI_APIKEY`
+- **Configuration:** Optional `OPENAI_BASE_URL` override
+- **Implementation:** `src/main/providers/openai-provider.ts`
+
+### Anthropic Claude
+- **Provider ID:** `anthropic`
+- **Default Model:** `claude-sonnet-4-20250514`
+- **Endpoint:** `https://api.anthropic.com/v1/messages`
+- **Environment Variable:** `ANTHROPIC_APIKEY`
+- **Configuration:** Optional `ANTHROPIC_BASE_URL` override
+- **Implementation:** `src/main/providers/anthropic-provider.ts`
+
+### MiniMax
+- **Provider ID:** `minimax`
+- **Default Model:** `MiniMax-Text-01`
+- **Endpoint:** `https://api.minimax.io/v1/text/chatcompletion_v2`
+- **Environment Variable:** `MINIMAX_APIKEY`
+- **Implementation:** `src/main/providers/minimax-provider.ts`
+
+### Z.ai
+- **Provider ID:** `zai`
+- **Default Model:** `GLM-5.3`
+- **Endpoint:** OpenAI-compatible endpoint (custom)
+- **Environment Variable:** `ZAI_APIKEY`
+- **Implementation:** `src/main/providers/zai-provider.ts`
+
+### Coding Plan
+- **Provider ID:** `coding-plan`
+- **Default Model:** `gpt-4o`
+- **Endpoint:** OpenAI-compatible endpoint (custom)
+- **Environment Variables:** `CODING_PLAN_APIKEY`, optional `CODING_PLAN_BASE_URL`
+- **Implementation:** `src/main/providers/coding-plan-provider.ts`
+
+### Mock Providers
+- **Provider IDs:** `mock-echo`, `mock-intelligent`
+- **No API keys required** - Local simulation
+- **Implementation:** `src/main/providers/mock-providers.ts`
+
 ## Future Enhancements
 
 Planned improvements to the provider system:

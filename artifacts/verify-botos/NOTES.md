@@ -1,4 +1,82 @@
-# BotOS PR #27 Verification - Nyx Density/Icons Fix
+# BotOS Verification Notes
+
+This file contains summaries and quick links to verification evidence for BotOS PRs.
+
+---
+
+## PR #28 - OpenAI Provider with Secret-Safe Pattern
+
+**Branch:** `cursor/openai-provider-secret-safe-2dd7`  
+**Date:** 2026-09-07  
+**Status:** ✅ Build Pass, ✅ Code Verified, ⚠️ GUI Unavailable  
+
+**What changed:**
+- Added OpenAI Chat Completions provider (`src/main/providers/openai-provider.ts`)
+- Follows exact secret-safe pattern from Anthropic/MiniMax providers
+- Environment variable: `OPENAI_APIKEY` (normalized from provider id `openai`)
+- Default model: `gpt-4o-mini` for short-beat responses
+- Registered in AgentBus, secret detection, and UI provider list
+
+**Build checks:**
+- ✅ `npm install` - 317 packages, no errors
+- ✅ `npm run type-check` - TypeScript compilation clean
+- ✅ `npm run build` - Main + renderer builds successful
+
+**Security verification:**
+- ✅ No `getProviderSecret` in preload.ts (write-only IPC)
+- ✅ Secrets retrieved via `getProviderSecret('openai', 'apiKey')` in main process only
+- ✅ Environment variable normalization: `openai` → `OPENAI_APIKEY`
+- ✅ `isAvailable()` checks secret presence (dry/mock-safe without key)
+- ✅ IPC responses never echo API keys
+
+**Documentation:**
+- ✅ README.md updated with OpenAI configuration section
+- ✅ PROVIDERS.md updated with OpenAI entry
+
+**Manual testing plan:**
+1. Set secret via SecretRequestCard → provider becomes available
+2. Clear secret → provider shows "Needs key" again
+3. No key echo in DevTools or IPC calls
+4. Environment variable fallback: `export OPENAI_APIKEY=...` works
+
+**Details:** [openai-provider-verification.md](./openai-provider-verification.md)
+
+---
+
+## PR #27 - Nyx Density/Icons Fix
+
+**Branch:** `cursor/visual-redesign-icons-dense-chat-cbdf`  
+**Date:** 2026-09-07  
+**Status:** ✅ Build Pass, ✅ Source Verified, ⚠️ GUI Unavailable  
+
+**What changed:**
+- Dense chat gaps: 5px message spacing
+- No emoji in chrome: empty channel icon strings
+- Thinking indicator: single "…" with 0.5 opacity
+- Tighter rail/header/composer spacing (64px rail, 44px header, 10-12px composer)
+
+**Details:** [pr23-2026-09-07.md](./pr23-2026-09-07.md)
+
+---
+
+## Template for Future PRs
+
+**Branch:** `cursor/<feature-name>-<hash>`  
+**Date:** YYYY-MM-DD  
+**Status:** ✅/⚠️/❌ Build, ✅/⚠️/❌ Verified, ✅/⚠️ GUI  
+
+**What changed:**
+- Bullet point summary of feature/fix
+
+**Build checks:**
+- Status of install/type-check/build
+
+**Manual testing highlights:**
+- Key user-facing behaviors verified
+
+**Details:** [link-to-detailed-verification.md](./filename.md)
+
+---
 
 **Branch:** `cursor/visual-redesign-icons-dense-chat-cbdf`  
 **Commit SHA:** `825b0ad`  
