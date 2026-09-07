@@ -159,9 +159,9 @@ ipcMain.handle('send-message', async (event, agentId: string, message: string) =
 
 ipcMain.handle('get-channels', async () => {
   return [
-    { id: '1', name: 'General', icon: '💬' },
-    { id: '2', name: 'Development', icon: '🔧' },
-    { id: '3', name: 'Research', icon: '🔬' },
+    { id: '1', name: 'General', icon: '' },
+    { id: '2', name: 'Development', icon: '' },
+    { id: '3', name: 'Research', icon: '' },
   ];
 });
 

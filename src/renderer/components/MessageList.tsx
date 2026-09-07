@@ -56,8 +56,6 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
   }
 
   const lastAssistantMessage = messages.filter((m) => m.role === 'assistant').at(-1);
-  const hasAssistantMessage = lastAssistantMessage !== undefined;
-  const useNeutralChrome = !hasAssistantMessage && !agentName && !agentAvatar;
 
   const renderAvatar = (role: 'user' | 'assistant', avatarText?: string) => {
     if (role === 'user') {
@@ -104,20 +102,16 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
       {isLoading && (
         <div className="message assistant">
           <div className="message-avatar">
-            {useNeutralChrome ? (
-              <Bot size={16} strokeWidth={2} style={{ opacity: 0.5 }} />
-            ) : (
-              renderAvatar('assistant', lastAssistantMessage?.agentAvatar || agentAvatar)
-            )}
+            {renderAvatar('assistant', lastAssistantMessage?.agentAvatar || agentAvatar)}
           </div>
           <div className="message-content">
             <div className="message-header">
               <span className="message-author">
-                {useNeutralChrome ? 'Thinking' : (lastAssistantMessage?.agentName || agentName || 'Assistant')}
+                {lastAssistantMessage?.agentName || agentName || 'Assistant'}
               </span>
             </div>
             <div className="message-text" style={{ opacity: 0.5 }}>
-              {useNeutralChrome ? '…' : 'Thinking...'}
+              …
             </div>
           </div>
         </div>
