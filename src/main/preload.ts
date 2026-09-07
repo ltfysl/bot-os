@@ -135,10 +135,38 @@ export interface WidgetResponse {
   dismissed: boolean;
 }
 
+export interface DirectMessage {
+  id: string;
+  participants: [string, string];
+  createdAt: number;
+}
+
+export interface DmMessage {
+  id: string;
+  dmId: string;
+  content: string;
+  role: 'user' | 'assistant';
+  timestamp: number;
+  senderId: string;
+  senderName?: string;
+  senderAvatar?: string;
+}
+
+export interface DmStreamChunk {
+  id: string;
+  dmId: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar: string;
+  chunk: string;
+  done: boolean;
+}
+
 export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-found' | 'provider-not-found' | 'provider-unavailable' | 'general-error';
 
 export interface WakeFailureEvent {
   roomId?: string;
+  dmId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
   reason: WakeFailureReason;
@@ -148,6 +176,7 @@ export interface WakeFailureEvent {
 
 export interface WakeTimeoutEvent {
   roomId?: string;
+  dmId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
   timeoutMs: number;
@@ -160,6 +189,32 @@ export interface WakeMembershipDeniedEvent {
   targetAgentId: string;
   denialReason: 'initiator-not-member' | 'target-not-member';
   timestamp: number;
+}
+
+export type WakeOrder = 'sequential' | 'priority';
+
+export interface TargetedWakeTarget {
+  agentId: string;
+  priority?: number;
+}
+
+export interface TargetedWakeRequest {
+  roomId: string;
+  initiatorAgentId: string;
+  targets: TargetedWakeTarget[];
+  message: string;
+  order: WakeOrder;
+}
+
+export interface WakeCompletionEvent {
+  roomId: string;
+  initiatorAgentId: string;
+  targetAgentId: string;
+  success: boolean;
+  reason?: WakeFailureReason;
+  errorMessage?: string;
+  timestamp: number;
+  orderIndex?: number;
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -187,8 +242,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('wake-response', handler);
     return () => ipcRenderer.removeListener('wake-response', handler);
   },
-  requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string): Promise<WakeResult> =>
-    ipcRenderer.invoke('request-agent-wake', initiatorAgentId, targetAgentId, message, roomId),
+  requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string, dmId?: string): Promise<WakeResult> =>
+    ipcRenderer.invoke('request-agent-wake', initiatorAgentId, targetAgentId, message, roomId, dmId),
   getChannels: (): Promise<Channel[]> => ipcRenderer.invoke('get-channels'),
   getAgents: (): Promise<Agent[]> => ipcRenderer.invoke('get-agents'),
   listProviders: (): Promise<ProviderInfo[]> => ipcRenderer.invoke('list-providers'),
@@ -259,5 +314,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeMembershipDeniedEvent) => callback(wakeEvent);
     ipcRenderer.on('wake-membership-denied', handler);
     return () => ipcRenderer.removeListener('wake-membership-denied', handler);
+  },
+  onWakeCompletion: (callback: (event: WakeCompletionEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeCompletionEvent) => callback(wakeEvent);
+    ipcRenderer.on('wake-completion', handler);
+    return () => ipcRenderer.removeListener('wake-completion', handler);
+  },
+  requestTargetedRoomWake: (request: TargetedWakeRequest): Promise<void> =>
+    ipcRenderer.invoke('request-targeted-room-wake', request),
+  getOrCreateDm: (agentId1: string, agentId2: string): Promise<DirectMessage> =>
+    ipcRenderer.invoke('get-or-create-dm', agentId1, agentId2),
+  getDm: (agentId1: string, agentId2: string): Promise<DirectMessage | undefined> =>
+    ipcRenderer.invoke('get-dm', agentId1, agentId2),
+  listDmsForAgent: (agentId: string): Promise<DirectMessage[]> =>
+    ipcRenderer.invoke('list-dms-for-agent', agentId),
+  getDmMessages: (dmId: string): Promise<DmMessage[]> =>
+    ipcRenderer.invoke('get-dm-messages', dmId),
+  sendDmMessage: (dmId: string, content: string, senderId: string, shouldWake?: boolean): Promise<DmMessage> =>
+    ipcRenderer.invoke('send-dm-message', dmId, content, senderId, shouldWake),
+  sendDmMessageStream: (dmId: string, content: string, senderId: string, shouldWake?: boolean): Promise<DmMessage> =>
+    ipcRenderer.invoke('send-dm-message-stream', dmId, content, senderId, shouldWake),
+  onDmStreamChunk: (callback: (chunk: DmStreamChunk) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, chunk: DmStreamChunk) => callback(chunk);
+    ipcRenderer.on('dm-stream-chunk', handler);
+    return () => ipcRenderer.removeListener('dm-stream-chunk', handler);
+  },
+  onDmWakeResponse: (callback: (message: DmMessage) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, message: DmMessage) => callback(message);
+    ipcRenderer.on('dm-wake-response', handler);
+    return () => ipcRenderer.removeListener('dm-wake-response', handler);
   },
 });
