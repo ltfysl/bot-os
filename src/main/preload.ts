@@ -11,6 +11,27 @@ export interface Message {
   targetAgentId?: string;
 }
 
+export interface StreamChunk {
+  id: string;
+  agentId: string;
+  agentName: string;
+  agentAvatar: string;
+  chunk: string;
+  done: boolean;
+  targetAgentId?: string;
+}
+
+export interface StreamResponse {
+  id: string;
+  agentId: string;
+  streaming: boolean;
+}
+
+export interface WakeResult {
+  success: boolean;
+  error?: string;
+}
+
 export interface Channel {
   id: string;
   name: string;
@@ -83,6 +104,16 @@ export interface RoomMessage {
   agentAvatar?: string;
 }
 
+export interface RoomStreamChunk {
+  id: string;
+  roomId: string;
+  agentId: string;
+  agentName: string;
+  agentAvatar: string;
+  chunk: string;
+  done: boolean;
+}
+
 export type WidgetType = 'single-select' | 'multi-select' | 'danger' | 'allow-custom';
 
 export interface WidgetOption {
@@ -107,11 +138,30 @@ export interface WidgetResponse {
 contextBridge.exposeInMainWorld('electronAPI', {
   sendMessage: (agentId: string, message: string): Promise<Message> =>
     ipcRenderer.invoke('send-message', agentId, message),
+  sendMessageStream: (agentId: string, message: string): Promise<StreamResponse> =>
+    ipcRenderer.invoke('send-message-stream', agentId, message),
+  onMessageStreamChunk: (callback: (chunk: StreamChunk) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, chunk: StreamChunk) => callback(chunk);
+    ipcRenderer.on('message-stream-chunk', handler);
+    return () => ipcRenderer.removeListener('message-stream-chunk', handler);
+  },
+  onWakeStreamChunk: (callback: (chunk: StreamChunk) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, chunk: StreamChunk) => callback(chunk);
+    ipcRenderer.on('wake-stream-chunk', handler);
+    return () => ipcRenderer.removeListener('wake-stream-chunk', handler);
+  },
+  onMessageStreamError: (callback: (error: { id: string; agentId: string; error: string }) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, error: { id: string; agentId: string; error: string }) => callback(error);
+    ipcRenderer.on('message-stream-error', handler);
+    return () => ipcRenderer.removeListener('message-stream-error', handler);
+  },
   onWakeResponse: (callback: (message: Message) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, message: Message) => callback(message);
     ipcRenderer.on('wake-response', handler);
     return () => ipcRenderer.removeListener('wake-response', handler);
   },
+  requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string): Promise<WakeResult> =>
+    ipcRenderer.invoke('request-agent-wake', initiatorAgentId, targetAgentId, message, roomId),
   getChannels: (): Promise<Channel[]> => ipcRenderer.invoke('get-channels'),
   getAgents: (): Promise<Agent[]> => ipcRenderer.invoke('get-agents'),
   listProviders: (): Promise<ProviderInfo[]> => ipcRenderer.invoke('list-providers'),
@@ -147,6 +197,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-room-messages', roomId),
   sendRoomMessage: (roomId: string, content: string, senderId?: string): Promise<RoomMessage> =>
     ipcRenderer.invoke('send-room-message', roomId, content, senderId),
+  sendRoomMessageStream: (roomId: string, content: string, senderId?: string): Promise<RoomMessage> =>
+    ipcRenderer.invoke('send-room-message-stream', roomId, content, senderId),
+  onRoomStreamChunk: (callback: (chunk: RoomStreamChunk) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, chunk: RoomStreamChunk) => callback(chunk);
+    ipcRenderer.on('room-stream-chunk', handler);
+    return () => ipcRenderer.removeListener('room-stream-chunk', handler);
+  },
   clearRoomUnread: (roomId: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke('clear-room-unread', roomId),
   onRoomFanInResponse: (callback: (message: RoomMessage) => void): (() => void) => {

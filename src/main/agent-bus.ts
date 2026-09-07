@@ -1,7 +1,10 @@
+export type StreamChunkCallback = (chunk: string, done: boolean) => void;
+
 export interface AgentProvider {
   id: string;
   name: string;
   sendMessage(message: string, context?: Record<string, unknown>): Promise<string>;
+  sendMessageStream?(message: string, context: Record<string, unknown> | undefined, onChunk: StreamChunkCallback): Promise<void>;
   isAvailable(): Promise<boolean>;
 }
 
@@ -111,6 +114,145 @@ export class AgentBus {
     }
 
     return primary;
+  }
+
+  async sendMessageWithWakeStream(
+    message: string,
+    agentId: string,
+    context: Record<string, unknown> | undefined,
+    onPrimaryChunk: (agentId: string, chunk: string, done: boolean) => void,
+    onWakeChunk?: (wokeAgentId: string, chunk: string, done: boolean) => void
+  ): Promise<void> {
+    const primaryAgent = this.agents.get(agentId);
+    if (!primaryAgent) {
+      throw new Error(`Agent not found: ${agentId}`);
+    }
+
+    const provider = this.providers.get(primaryAgent.providerId);
+    if (!provider) {
+      throw new Error(`Provider not found for agent: ${primaryAgent.providerId}`);
+    }
+
+    const isAvailable = await provider.isAvailable();
+    if (!isAvailable) {
+      throw new Error(`Provider not available: ${primaryAgent.providerId}`);
+    }
+
+    if (provider.sendMessageStream) {
+      await provider.sendMessageStream(message, context, (chunk, done) => {
+        onPrimaryChunk(agentId, chunk, done);
+      });
+    } else {
+      const response = await provider.sendMessage(message, context);
+      onPrimaryChunk(agentId, response, true);
+    }
+
+    const mentionedAgentIds = this.extractMentions(message);
+    const wokeAgents = mentionedAgentIds.filter((id) => id !== agentId);
+
+    if (wokeAgents.length > 0 && onWakeChunk) {
+      wokeAgents.forEach((wokeAgentId) => {
+        this.wakeAgentStream(wokeAgentId, message, agentId, onWakeChunk)
+          .catch((err) => {
+            console.error(`Failed to wake agent ${wokeAgentId}:`, err);
+          });
+      });
+    }
+  }
+
+  private async wakeAgentStream(
+    wokeAgentId: string,
+    originalMessage: string,
+    wakerId: string,
+    onChunk: (wokeAgentId: string, chunk: string, done: boolean) => void
+  ): Promise<void> {
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Wake timeout')), 5000)
+    );
+
+    const wakePromise = this._wakeAgentStreamInternal(wokeAgentId, originalMessage, wakerId, onChunk);
+
+    await Promise.race([wakePromise, timeoutPromise]);
+  }
+
+  private async _wakeAgentStreamInternal(
+    wokeAgentId: string,
+    originalMessage: string,
+    wakerId: string,
+    onChunk: (wokeAgentId: string, chunk: string, done: boolean) => void
+  ): Promise<void> {
+    const wokeAgent = this.agents.get(wokeAgentId);
+    if (!wokeAgent) {
+      throw new Error(`Woken agent not found: ${wokeAgentId}`);
+    }
+
+    const provider = this.providers.get(wokeAgent.providerId);
+    if (!provider) {
+      throw new Error(`Provider not found for woken agent: ${wokeAgent.providerId}`);
+    }
+
+    const isAvailable = await provider.isAvailable();
+    if (!isAvailable) {
+      throw new Error(`Provider not available for woken agent: ${wokeAgent.providerId}`);
+    }
+
+    const wakeContext = `Wake request from agent ${wakerId}: ${originalMessage}`;
+
+    if (provider.sendMessageStream) {
+      await provider.sendMessageStream(wakeContext, { wake: true }, (chunk, done) => {
+        onChunk(wokeAgentId, chunk, done);
+      });
+    } else {
+      const response = await provider.sendMessage(wakeContext, { wake: true });
+      onChunk(wokeAgentId, response, true);
+    }
+  }
+
+  async requestAgentWake(
+    initiatorAgentId: string,
+    targetAgentId: string,
+    message: string,
+    roomId?: string
+  ): Promise<void> {
+    const initiator = this.agents.get(initiatorAgentId);
+    if (!initiator) {
+      throw new Error(`Initiator agent not found: ${initiatorAgentId}`);
+    }
+
+    const target = this.agents.get(targetAgentId);
+    if (!target) {
+      throw new Error(`Target agent not found: ${targetAgentId}`);
+    }
+
+    if (roomId) {
+      const { RoomManager } = require('./rooms');
+      const roomManagerInstance = global.roomManager as InstanceType<typeof RoomManager> | undefined;
+      if (!roomManagerInstance) {
+        throw new Error('Room manager not initialized');
+      }
+
+      const room = roomManagerInstance.getRoom(roomId);
+      if (!room) {
+        throw new Error(`Room not found: ${roomId}`);
+      }
+
+      if (!room.memberAgentIds.includes(initiatorAgentId)) {
+        throw new Error(`Initiator agent ${initiatorAgentId} is not a member of room ${roomId}`);
+      }
+
+      if (!room.memberAgentIds.includes(targetAgentId)) {
+        throw new Error(`Target agent ${targetAgentId} is not a member of room ${roomId}`);
+      }
+    }
+
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Wake timeout')), 5000)
+    );
+
+    const wakeContext = `Bot-initiated wake from agent ${initiatorAgentId}: ${message}`;
+    const wakePromise = this._wakeAgentInternal(targetAgentId, wakeContext, initiatorAgentId);
+
+    await Promise.race([wakePromise, timeoutPromise]);
   }
 
   private extractMentions(message: string): string[] {

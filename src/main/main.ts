@@ -16,6 +16,11 @@ let agentBus: AgentBus;
 let routineManager: RoutineManager;
 let roomManager: RoomManager;
 
+declare global {
+  // eslint-disable-next-line no-var
+  var roomManager: RoomManager | undefined;
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -104,6 +109,7 @@ app.whenReady().then(async () => {
   routineManager.startScheduler();
 
   roomManager = new RoomManager();
+  global.roomManager = roomManager;
   
   const existingRooms = roomManager.listRooms();
   if (existingRooms.length === 0) {
@@ -226,6 +232,56 @@ ipcMain.handle('send-message', async (event, agentId: string, message: string) =
     agentName: primary.agentName,
     agentAvatar: primary.agentAvatar,
   };
+});
+
+ipcMain.handle('send-message-stream', async (event, agentId: string, message: string) => {
+  const messageId = `${Date.now()}-${agentId}`;
+  const primaryAgent = agentBus.getAgent(agentId);
+
+  if (!primaryAgent) {
+    throw new Error(`Agent not found: ${agentId}`);
+  }
+
+  agentBus.sendMessageWithWakeStream(
+    message,
+    agentId,
+    undefined,
+    (streamAgentId, chunk, done) => {
+      event.sender.send('message-stream-chunk', {
+        id: messageId,
+        agentId: streamAgentId,
+        agentName: primaryAgent.name,
+        agentAvatar: primaryAgent.avatar,
+        chunk,
+        done,
+        targetAgentId: agentId,
+      });
+    },
+    (wokeAgentId, chunk, done) => {
+      const wokeAgent = agentBus.getAgent(wokeAgentId);
+      if (wokeAgent) {
+        const wakeMessageId = `${Date.now()}-${wokeAgentId}`;
+        event.sender.send('wake-stream-chunk', {
+          id: wakeMessageId,
+          agentId: wokeAgentId,
+          agentName: wokeAgent.name,
+          agentAvatar: wokeAgent.avatar,
+          chunk,
+          done,
+          targetAgentId: agentId,
+        });
+      }
+    }
+  ).catch((err) => {
+    console.error('Stream error:', err);
+    event.sender.send('message-stream-error', {
+      id: messageId,
+      agentId,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    });
+  });
+
+  return { id: messageId, agentId, streaming: true };
 });
 
 ipcMain.handle('get-channels', async () => {
@@ -429,9 +485,141 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
   return userMessage;
 });
 
+ipcMain.handle('send-room-message-stream', async (event, roomId: string, content: string, senderId?: string) => {
+  const room = roomManager.getRoom(roomId);
+  if (!room) {
+    throw new Error(`Room not found: ${roomId}`);
+  }
+
+  const userMessage = {
+    id: `${Date.now()}-user`,
+    roomId,
+    content,
+    role: 'user' as const,
+    timestamp: Date.now(),
+  };
+  
+  roomManager.addRoomMessage(userMessage);
+
+  const mentionedAgentIds = extractRoomMentions(content, room.memberAgentIds);
+  
+  if (mentionedAgentIds.length === 0) {
+    if (senderId) {
+      if (!room.memberAgentIds.includes(senderId)) {
+        throw new Error(`Agent ${senderId} is not a member of room ${roomId}`);
+      }
+      
+      const agent = agentBus.getAgent(senderId);
+      if (agent) {
+        const messageId = `${Date.now()}-${senderId}`;
+        agentBus.sendMessageWithWakeStream(
+          content,
+          senderId,
+          { room: roomId },
+          (streamAgentId, chunk, done) => {
+            event.sender.send('room-stream-chunk', {
+              id: messageId,
+              roomId,
+              agentId: streamAgentId,
+              agentName: agent.name,
+              agentAvatar: agent.avatar,
+              chunk,
+              done,
+            });
+
+            if (done) {
+              const fullContent = chunk;
+              const assistantMessage = {
+                id: messageId,
+                roomId,
+                content: fullContent,
+                role: 'assistant' as const,
+                timestamp: Date.now(),
+                agentId: senderId,
+                agentName: agent.name,
+                agentAvatar: agent.avatar,
+              };
+              roomManager.addRoomMessage(assistantMessage);
+            }
+          }
+        ).catch((err) => {
+          console.error(`Failed to send stream message from agent ${senderId}:`, err);
+        });
+      }
+    }
+    return userMessage;
+  }
+
+  mentionedAgentIds.forEach((agentId) => {
+    const agent = agentBus.getAgent(agentId);
+    if (!agent) {
+      console.error(`Agent not found: ${agentId}`);
+      return;
+    }
+
+    const messageId = `${Date.now()}-${agentId}`;
+    let accumulatedContent = '';
+
+    agentBus.sendMessageWithWakeStream(
+      content,
+      agentId,
+      { room: roomId },
+      (streamAgentId, chunk, done) => {
+        if (!done) {
+          accumulatedContent += chunk;
+        } else {
+          accumulatedContent = chunk;
+        }
+
+        event.sender.send('room-stream-chunk', {
+          id: messageId,
+          roomId,
+          agentId: streamAgentId,
+          agentName: agent.name,
+          agentAvatar: agent.avatar,
+          chunk,
+          done,
+        });
+
+        if (done) {
+          const assistantMessage = {
+            id: messageId,
+            roomId,
+            content: accumulatedContent,
+            role: 'assistant' as const,
+            timestamp: Date.now(),
+            agentId,
+            agentName: agent.name,
+            agentAvatar: agent.avatar,
+          };
+          
+          roomManager.addRoomMessage(assistantMessage);
+          roomManager.incrementUnread(roomId);
+        }
+      }
+    ).catch((err) => {
+      console.error(`Failed to wake agent ${agentId} in room ${roomId}:`, err);
+    });
+  });
+  
+  return userMessage;
+});
+
 ipcMain.handle('clear-room-unread', async (_event, roomId: string) => {
   roomManager.clearUnread(roomId);
   return { success: true };
+});
+
+ipcMain.handle('request-agent-wake', async (_event, initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string) => {
+  try {
+    await agentBus.requestAgentWake(initiatorAgentId, targetAgentId, message, roomId);
+    return { success: true };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
 });
 
 function extractRoomMentions(message: string, memberAgentIds: string[]): string[] {
