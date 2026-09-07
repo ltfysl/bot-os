@@ -1,217 +1,158 @@
-# BotOS Verification Notes
+# Attachment Upload Implementation - Verification Notes
 
-This file contains summaries and quick links to verification evidence for BotOS PRs.
+## Overview
+Implemented real file attachment upload for BotOS, replacing the no-op paperclip functionality with working file picker, attachment chips, and message persistence.
 
----
+## Implementation Details
 
-## PR #30 - Bus Depth: Streaming Fan-In & Bot-Initiated Wake
+### 1. Type System
+- Added `Attachment` interface with fields: `id`, `name`, `size`, `type`, `path?`, `data?`
+- Updated `Message` and `RoomMessage` types to include optional `attachments?: Attachment[]`
+- Propagated types through renderer (`types.ts`) and main (`preload.ts`, `rooms.ts`)
 
-**Branch:** `cursor/bus-depth-streaming-bot-wake-c35d`  
-**PR:** https://github.com/ltfysl/bot-os/pull/30  
-**Date:** 2026-09-07  
-**Status:** ✅ Build Pass, ✅ Code Verified, ⚠️ GUI Unavailable  
+### 2. File Picker (Main Process)
+- **IPC Handler**: `pick-files` in `main.ts`
+- Uses native Electron `dialog.showOpenDialog`
+- Supports multiple file selection
+- Filters: All Files, Images (jpg/png/gif/webp/svg), Documents (pdf/doc/txt/md)
+- Returns array of `Attachment` objects with file metadata
+- File path stored for potential future use (streaming, display)
 
-**What changed:**
-- Extended `AgentProvider` with optional `sendMessageStream` for streaming responses
-- Implemented `sendMessageWithWakeStream` in `AgentBus` for non-blocking streaming
-- Added IPC events: `message-stream-chunk`, `wake-stream-chunk`, `room-stream-chunk`
-- Added `requestAgentWake` API for bot-initiated wakes with room membership validation
-- IPC handler: `request-agent-wake` (write-only, no secrets)
-- Mock-safe: providers without streaming fall back to single chunk
+### 3. Composer UI (`MessageComposer.tsx`)
+- **Attachment Chips**: Display above composer when files selected
+- Shows filename + size (in KB) for each attachment
+- **Remove Button**: X icon to remove individual attachments before sending
+- **Send Logic**: Allows sending with attachments only (no text required)
+- **Paperclip Button**: Now calls `window.electronAPI.pickFiles({ multiple: true })`
 
-**Build checks:**
-- ✅ `npm install` - 317 packages, no errors
-- ✅ `npm run type-check` - TypeScript compilation clean
-- ✅ `npm run build` - Main + renderer builds successful
+### 4. Message Display (`MessageList.tsx`)
+- Renders attachments below message text as compact chips
+- Shows filename and size for each attachment
+- Consistent styling with compose chips but read-only (no remove button)
 
-**Security verification:**
-- ✅ No secrets in IPC responses or preload get paths
-- ✅ Bot wake validation: room membership checks for both agents
-- ✅ Timeout + attribution match existing wake behavior (5s)
+### 5. CSS Styling (`index.css`)
+**Compose Attachments** (`.compose-attachments`, `.attachment-chip`):
+- Horizontal flex wrap with 4px gap
+- Chips: 4-6px padding, tertiary background, border-default
+- Hover: bg-hover transition
+- Remove button: 18x18px with subtle hover state
 
-**Details:** [bus-depth-streaming-wake-verification.md](./bus-depth-streaming-wake-verification.md)
+**Message Attachments** (`.message-attachments`, `.message-attachment`):
+- Similar chip style but no remove button
+- Slightly muted colors (text-secondary, text-muted for size)
+- 4px top margin from message text
 
----
+### 6. IPC Flow
+**1:1 Chat**:
+- `ChatView.tsx` → `handleSendMessage(content, attachments?)`
+- Calls `window.electronAPI.sendMessage(agentId, content, attachments)`
+- Main process `send-message` handler receives attachments, passes through to agent bus
+- Returns message with attachments included
 
-## PR #29 - Inline Question Widgets
+**Room Chat**:
+- `RoomView.tsx` → `handleSendMessage(content, attachments?)`
+- Calls `window.electronAPI.sendRoomMessage(roomId, content, senderId?, attachments)`
+- Main process `send-room-message` handler stores attachments with message
+- Room persistence includes attachments in saved JSON
 
-**Branch:** `cursor/inline-question-widgets-d5be`  
-**Date:** 2026-09-07  
-**Commit:** 39b1fb0  
-**Status:** ✅ Build Pass, ✅ Code Verified, ⚠️ GUI Unavailable  
+### 7. Build & Type Safety
+- ✅ TypeScript type-check passes (`npm run type-check`)
+- ✅ Build completes successfully (`npm run build`)
+- All IPC signatures updated to accept optional `attachments` parameter
+- No breaking changes to existing code paths (attachments are optional)
 
-**What changed:**
-- Added inline question widget system (`WidgetCard.tsx`)
-- Premium floating card chrome matching `SecretRequestCard` family
-- Four widget types: single-select, multi-select, danger, allow-custom
-- IPC seam: `onWidgetRequest` / `respondToWidget` (secret-safe)
-- Resolved widgets persist as checked summaries in transcript
-- Widgets render even when chat is empty (no messages)
-- Demo triggers via keyword detection in messages
+## Testing Checklist
 
-**Build checks:**
-- ✅ `npm install` - 317 packages, no errors
-- ✅ `npm run type-check` - TypeScript compilation clean
-- ✅ `npm run build` - Main + renderer builds successful (169.74 kB)
+### Core Functionality
+- [ ] Paperclip button opens native file picker
+- [ ] Multiple files can be selected
+- [ ] Selected files appear as chips with name + size
+- [ ] Remove button removes individual attachments
+- [ ] Can send message with only attachments (no text)
+- [ ] Can send message with text + attachments
+- [ ] Attachments appear in transcript after send
+- [ ] Attachments persist on both user and room messages
 
-**Nyx Feel Compliance:**
-- ✅ Hairline border, calm dark fill, soft shadow
-- ✅ Lucide 14-16px icons (Check for resolved state)
-- ✅ 4-8px internal rhythm
-- ✅ Chip/row layouts based on option count
-- ✅ States: idle → selected → submitting → resolved
-- ✅ No Slack Block Kit / SaaS survey chrome
+### UI & UX
+- [ ] Attachment chips match Grok Bot / existing shell density
+- [ ] Hover states work on chips and remove buttons
+- [ ] No emoji chrome or rainbow progress bars
+- [ ] Soft surfaces and 4-5px rhythm maintained
+- [ ] File size displayed in KB (e.g. "1234.5KB")
+- [ ] Long filenames truncate with ellipsis
 
-**Manual testing plan:**
-1. Send "pick one" → single-select widget appears
-2. Send "select multiple" → multi-select widget appears
-3. Send "delete" → danger widget with red styling
-4. Send "enter value" → allow-custom with text input
-5. Verify resolved state persists as checked summary
-6. Verify widgets appear in empty chat (zero messages)
+### Edge Cases
+- [ ] Empty message + no attachments → Send button disabled
+- [ ] Very large files (>10MB) are selectable
+- [ ] Special characters in filenames display correctly
+- [ ] Canceling file picker doesn't error
+- [ ] Removing all attachments re-disables send (if no text)
 
-**Details:** See full notes below (Widget System Components section)
+### Cross-Platform
+- [ ] File picker works on macOS
+- [ ] File picker works on Windows
+- [ ] File picker works on Linux
 
----
+## Known Limitations
 
-## PR #28 - OpenAI Provider with Secret-Safe Pattern
+1. **File Content Not Sent**: Current implementation stores file path/metadata but doesn't:
+   - Read file contents into `data` field
+   - Stream file contents to provider APIs
+   - Display image thumbnails inline
+   
+   These are intentional scope limitations. Future work could add:
+   - Base64 encoding for small files
+   - Image preview rendering
+   - File download/open handlers
 
-**Branch:** `cursor/openai-provider-secret-safe-2dd7`  
-**Date:** 2026-09-07  
-**Status:** ✅ Build Pass, ✅ Code Verified, ⚠️ GUI Unavailable  
+2. **No Validation**: No file size limits, type restrictions, or virus scanning. Production deployment should add:
+   - Max file size check (e.g. 25MB per file)
+   - Allowed file type whitelist
+   - File count limit per message
 
-**What changed:**
-- Added OpenAI Chat Completions provider (`src/main/providers/openai-provider.ts`)
-- Follows exact secret-safe pattern from Anthropic/MiniMax providers
-- Environment variable: `OPENAI_API_KEY` (primary, industry-standard) + `OPENAI_APIKEY` (alternative via secrets.ts)
-- Key resolution: `config.apiKey || getProviderSecret('openai','apiKey') || process.env.OPENAI_API_KEY`
-- Default model: `gpt-4o-mini` for short-beat responses
-- Registered in AgentBus, secret detection, and UI provider list
+3. **Path-Based**: Desktop only - file paths won't work in web deployment without adaptation (would need upload to storage bucket).
 
-**Build checks:**
-- ✅ `npm install` - 317 packages, no errors
-- ✅ `npm run type-check` - TypeScript compilation clean
-- ✅ `npm run build` - Main + renderer builds successful
+## Code Quality
 
-**Security verification:**
-- ✅ No `getProviderSecret` in preload.ts (write-only IPC)
-- ✅ Key resolution formula: `config.apiKey || getProviderSecret('openai','apiKey') || process.env.OPENAI_API_KEY`
-- ✅ Dual env var support: `OPENAI_API_KEY` (primary) + `OPENAI_APIKEY` (alternative via secrets.ts)
-- ✅ `hasSecret` matches `isAvailable()`: checks both `hasProviderSecret('openai','apiKey')` OR `process.env.OPENAI_API_KEY`
-- ✅ IPC responses never echo API keys
+### Maintained Patterns
+- ✅ Inline imports avoided - all imports at top
+- ✅ Exhaustive typing - no `any` types used
+- ✅ Consistent React patterns - hooks, composition
+- ✅ IPC security - file operations in main process only
+- ✅ CSS variables - no hardcoded colors
 
-**Documentation:**
-- ✅ README.md updated with OpenAI configuration section
-- ✅ PROVIDERS.md updated with OpenAI entry
+### Anti-Patterns Avoided
+- ❌ No SaaS dropzone sprawl
+- ❌ No Slack Block Kit file cards
+- ❌ No emoji file icons
+- ❌ No drag-drop modal wizards
+- ❌ No giant cards or rainbow progress bars
 
-**Manual testing plan:**
-1. Set secret via SecretRequestCard → provider becomes available
-2. Clear secret → provider shows "Needs key" again
-3. No key echo in DevTools or IPC calls
-4. Environment variable fallback: `export OPENAI_API_KEY=...` works (primary)
-5. Alternative env var: `export OPENAI_APIKEY=...` also works (via secrets.ts normalization)
+## Verification Commands
 
-**Details:** [openai-provider-verification.md](./openai-provider-verification.md)
+```bash
+# Type check
+npm run type-check
 
----
+# Build
+npm run build
 
-## PR #27 - Nyx Density/Icons Fix
+# Run app (manual testing required)
+npm start
+```
 
-**Branch:** `cursor/visual-redesign-icons-dense-chat-cbdf`  
-**Date:** 2026-09-07  
-**Status:** ✅ Build Pass, ✅ Source Verified, ⚠️ GUI Unavailable  
+## PR Readiness
 
-**What changed:**
-- Dense chat gaps: 5px message spacing
-- No emoji in chrome: empty channel icon strings
-- Thinking indicator: single "…" with 0.5 opacity
-- Tighter rail/header/composer spacing (64px rail, 44px header, 10-12px composer)
+- ✅ Code committed and pushed
+- ✅ Type check passes
+- ✅ Build succeeds
+- 🔄 Manual verification pending (requires `npm start`)
+- 🔄 PR draft created, will undraft after manual testing
 
-**Details:** [pr23-2026-09-07.md](./pr23-2026-09-07.md)
+## Next Steps
 
----
-
-## Template for Future PRs
-
-**Branch:** `cursor/<feature-name>-<hash>`  
-**Date:** YYYY-MM-DD  
-**Status:** ✅/⚠️/❌ Build, ✅/⚠️/❌ Verified, ✅/⚠️ GUI  
-
-**What changed:**
-- Bullet point summary of feature/fix
-
-**Build checks:**
-- Status of install/type-check/build
-
-**Manual testing highlights:**
-- Key user-facing behaviors verified
-
-**Details:** [link-to-detailed-verification.md](./filename.md)
-
----
-<<<<<<< HEAD
-
-# Detailed Widget System Components (PR #29)
-
-## Widget Types
-
-1. **WidgetCard.tsx** - Premium inline question component
-   - Single-select (auto-submit on selection)
-   - Multi-select (with Confirm button)
-   - Danger mode (destructive action styling)
-   - Allow-custom (preset options + custom text input)
-
-2. **CSS Styling** - Matching SecretRequestCard family
-   - Hairline border, calm dark fill, soft shadow
-   - 4-8px rhythm inside cards
-   - Quiet accent states for selected options
-   - Resolved state collapses to checked summary
-   - No emoji chrome (lucide icons only)
-
-3. **IPC Seam** - Secret-safe renderer/main boundary
-   - `onWidgetRequest` - Renderer listens for widget requests
-   - `respondToWidget` - Renderer sends widget responses
-   - Types fully defined in preload.ts and types.ts
-
-4. **Demo Triggers** - Keyword detection in main.ts
-   - "pick one" / "choose one" → single-select widget
-   - "select multiple" / "pick several" → multi-select widget
-   - "delete" / "remove" → danger widget
-   - "custom input" / "enter value" → allow-custom widget
-
-## Architecture Notes
-
-- One widget at a time (no stacking)
-- Mounts inline in MessageList between agent avatar and message content
-- Auto-scrolls transcript when widget appears
-- Composer remains honest below (no overlap)
-- Error handling with muted inline error text
-- Resolved widgets persist in `resolvedWidgets[]` state array
-- Widgets render even when `messages.length === 0`
-
-## Visual Compliance (Nyx Feel Bar)
-
-✅ Surface: Premium floating card in chat column  
-✅ Border: Hairline with calm dark fill  
-✅ Shadow: Soft shadow on card only  
-✅ Icons: Lucide 14-16px (Check icon for resolved state)  
-✅ Density: 4-8px internal rhythm  
-✅ States: idle → selected → submitting → resolved  
-✅ Anti-patterns avoided: No Slack Block Kit, no SaaS survey chrome, no emoji icons
-
-## Files Changed
-
-- `src/renderer/components/WidgetCard.tsx` (new)
-- `src/renderer/components/ChatView.tsx` (modified)
-- `src/renderer/components/MessageList.tsx` (modified)
-- `src/renderer/types.ts` (modified)
-- `src/renderer/index.css` (modified)
-- `src/main/preload.ts` (modified)
-- `src/main/main.ts` (modified)
-
-## Widget System Fixes (39b1fb0)
-
-1. **Resolved state persistence** - Widget collapses to durable checked summary that stays visible in transcript
-2. **Empty chat rendering** - Widgets render even when `messages.length === 0` (removed early return)
-=======
->>>>>>> 4ba465e (docs: Add verification artifacts for bus depth PR)
+1. Run `npm start` to launch app
+2. Test file picker flow end-to-end
+3. Verify attachments persist in 1:1 and room chats
+4. Capture screenshots for PR evidence
+5. Undraft PR once verified working
