@@ -57,6 +57,14 @@ export interface WakeMembershipDeniedEvent {
   timestamp: number;
 }
 
+export interface WakeBackpressureEvent {
+  targetAgentId: string;
+  queuePosition: number;
+  queueLength: number;
+  activeWakes: number;
+  timestamp: number;
+}
+
 export interface Channel {
   id: string;
   name: string;
@@ -201,6 +209,7 @@ declare global {
       onWakeFailure: (callback: (event: WakeFailureEvent) => void) => (() => void);
       onWakeTimeout: (callback: (event: WakeTimeoutEvent) => void) => (() => void);
       onWakeMembershipDenied: (callback: (event: WakeMembershipDeniedEvent) => void) => (() => void);
+      onWakeBackpressure: (callback: (event: WakeBackpressureEvent) => void) => (() => void);
     };
   }
 }

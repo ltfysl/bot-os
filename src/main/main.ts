@@ -71,7 +71,15 @@ app.whenReady().then(async () => {
     onWakeEvent: (event) => {
       if (!mainWindow) return;
       
-      if ('reason' in event && event.reason === 'timeout') {
+      if ('queuePosition' in event) {
+        mainWindow.webContents.send('wake-backpressure', {
+          targetAgentId: event.targetAgentId,
+          queuePosition: event.queuePosition,
+          queueLength: event.queueLength,
+          activeWakes: event.activeWakes,
+          timestamp: event.timestamp,
+        });
+      } else if ('reason' in event && event.reason === 'timeout') {
         mainWindow.webContents.send('wake-timeout', {
           roomId: event.roomId,
           initiatorAgentId: event.initiatorAgentId,

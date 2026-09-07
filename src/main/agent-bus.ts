@@ -27,7 +27,15 @@ export interface WakeMembershipDeniedEvent {
   timestamp: number;
 }
 
-export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent) => void;
+export interface WakeBackpressureEvent {
+  targetAgentId: string;
+  queuePosition: number;
+  queueLength: number;
+  activeWakes: number;
+  timestamp: number;
+}
+
+export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent) => void;
 
 export interface AgentProvider {
   id: string;
@@ -585,7 +593,7 @@ export class AgentBus {
     return false;
   }
 
-  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent): void {
+  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent): void {
     if (this.onWakeEvent) {
       this.onWakeEvent(event);
     }
@@ -613,6 +621,13 @@ export class AgentBus {
         }
       }
       this.wakeQueue.push({ fn: wakeFn, targetAgentId });
+      this.emitWakeEvent({
+        targetAgentId,
+        queuePosition: this.wakeQueue.length,
+        queueLength: this.wakeQueue.length,
+        activeWakes: this.activeWakes,
+        timestamp: Date.now(),
+      });
     }
   }
 

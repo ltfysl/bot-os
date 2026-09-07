@@ -162,6 +162,14 @@ export interface WakeMembershipDeniedEvent {
   timestamp: number;
 }
 
+export interface WakeBackpressureEvent {
+  targetAgentId: string;
+  queuePosition: number;
+  queueLength: number;
+  activeWakes: number;
+  timestamp: number;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   sendMessage: (agentId: string, message: string): Promise<Message> =>
     ipcRenderer.invoke('send-message', agentId, message),
@@ -259,5 +267,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeMembershipDeniedEvent) => callback(wakeEvent);
     ipcRenderer.on('wake-membership-denied', handler);
     return () => ipcRenderer.removeListener('wake-membership-denied', handler);
+  },
+  onWakeBackpressure: (callback: (event: WakeBackpressureEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeBackpressureEvent) => callback(wakeEvent);
+    ipcRenderer.on('wake-backpressure', handler);
+    return () => ipcRenderer.removeListener('wake-backpressure', handler);
   },
 });
