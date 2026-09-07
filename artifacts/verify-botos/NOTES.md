@@ -13,7 +13,8 @@ This file contains summaries and quick links to verification evidence for BotOS 
 **What changed:**
 - Added OpenAI Chat Completions provider (`src/main/providers/openai-provider.ts`)
 - Follows exact secret-safe pattern from Anthropic/MiniMax providers
-- Environment variable: `OPENAI_APIKEY` (normalized from provider id `openai`)
+- Environment variable: `OPENAI_API_KEY` (primary, industry-standard) + `OPENAI_APIKEY` (alternative via secrets.ts)
+- Key resolution: `config.apiKey || getProviderSecret('openai','apiKey') || process.env.OPENAI_API_KEY`
 - Default model: `gpt-4o-mini` for short-beat responses
 - Registered in AgentBus, secret detection, and UI provider list
 
@@ -24,8 +25,8 @@ This file contains summaries and quick links to verification evidence for BotOS 
 
 **Security verification:**
 - ✅ No `getProviderSecret` in preload.ts (write-only IPC)
-- ✅ Secrets retrieved via `getProviderSecret('openai', 'apiKey')` in main process only
-- ✅ Environment variable normalization: `openai` → `OPENAI_APIKEY`
+- ✅ Key resolution formula: `config.apiKey || getProviderSecret('openai','apiKey') || process.env.OPENAI_API_KEY`
+- ✅ Dual env var support: `OPENAI_API_KEY` (primary) + `OPENAI_APIKEY` (alternative via secrets.ts)
 - ✅ `isAvailable()` checks secret presence (dry/mock-safe without key)
 - ✅ IPC responses never echo API keys
 
@@ -37,7 +38,8 @@ This file contains summaries and quick links to verification evidence for BotOS 
 1. Set secret via SecretRequestCard → provider becomes available
 2. Clear secret → provider shows "Needs key" again
 3. No key echo in DevTools or IPC calls
-4. Environment variable fallback: `export OPENAI_APIKEY=...` works
+4. Environment variable fallback: `export OPENAI_API_KEY=...` works (primary)
+5. Alternative env var: `export OPENAI_APIKEY=...` also works (via secrets.ts normalization)
 
 **Details:** [openai-provider-verification.md](./openai-provider-verification.md)
 

@@ -301,9 +301,11 @@ BotOS ships with the following provider implementations:
 - **Provider ID:** `openai`
 - **Default Model:** `gpt-4o-mini`
 - **Endpoint:** `https://api.openai.com/v1/chat/completions`
-- **Environment Variable:** `OPENAI_APIKEY`
+- **Environment Variable:** `OPENAI_API_KEY` (primary, industry-standard)
+- **Alternative:** `OPENAI_APIKEY` (also supported via secrets.ts normalization)
 - **Configuration:** Optional `OPENAI_BASE_URL` override
 - **Implementation:** `src/main/providers/openai-provider.ts`
+- **Key Resolution:** `config.apiKey || getProviderSecret('openai','apiKey') || process.env.OPENAI_API_KEY`
 
 ### Anthropic Claude
 - **Provider ID:** `anthropic`

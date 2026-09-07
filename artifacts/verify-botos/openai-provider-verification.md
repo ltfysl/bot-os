@@ -157,25 +157,30 @@ private providerHasSecret(providerId: string): boolean {
 
 ---
 
-### 4. Secret Name Environment Variable Normalization ✅ VERIFIED
+### 4. Environment Variable Resolution ✅ VERIFIED
 
-**Location:** `src/main/secrets.ts` lines 69-72
+**Location:** `src/main/providers/openai-provider.ts` lines 55, 117-119
 
+**Key Resolution Formula:**
 ```typescript
-export function getProviderSecret(providerId: string, key: string): string | undefined {
-  const normalizedProviderId = providerId.toUpperCase().replace(/-/g, '_');
-  return secrets[providerId]?.[key] || process.env[`${normalizedProviderId}_${key.toUpperCase()}`];
-}
+// In sendMessage() and isAvailable()
+const apiKey = this.config.apiKey || getProviderSecret('openai', 'apiKey') || process.env.OPENAI_API_KEY;
 ```
 
-**Secret Name Mapping:**
-- Provider ID: `openai`
-- Normalized env var: `OPENAI_APIKEY`
-- Pattern: `OPENAI_APIKEY` (underscore, all uppercase)
+**Resolution Priority:**
+1. **config.apiKey** - Constructor-provided key (for testing/override)
+2. **getProviderSecret('openai', 'apiKey')** - Runtime secrets via `setProviderSecret` IPC or `OPENAI_APIKEY` env var
+3. **process.env.OPENAI_API_KEY** - Direct environment variable (industry-standard)
 
-**Status:** ✅ Environment variable normalization follows established pattern:
-- `openai` → `OPENAI` → `OPENAI_APIKEY`
-- Same pattern as `minimax` → `MINIMAX_APIKEY`, `anthropic` → `ANTHROPIC_APIKEY`
+**Environment Variables Supported:**
+- **Primary:** `OPENAI_API_KEY` (industry-standard, Orin-compatible)
+- **Alternative:** `OPENAI_APIKEY` (via secrets.ts normalization: `openai` → `OPENAI` → `OPENAI_APIKEY`)
+
+**Status:** ✅ Dual environment variable support:
+- `OPENAI_API_KEY` resolves directly via explicit `process.env` check
+- `OPENAI_APIKEY` resolves via `getProviderSecret()` normalization
+- Maintains backward compatibility with secrets persistence layer
+- Matches industry expectations for OpenAI integrations
 
 ---
 
@@ -316,12 +321,14 @@ Added OpenAI to the "Current Providers" documentation section:
 
 ### Test 6: Environment Variable Fallback
 1. Close app
-2. Set environment variable: `export OPENAI_APIKEY=sk-real-key`
+2. Set environment variable: `export OPENAI_API_KEY=sk-real-key`
 3. Launch app
 4. Open provider menu
 5. **Expected:** OpenAI shows as available (no "Needs key")
 6. Switch agent to OpenAI and send message
 7. **Expected with valid key:** Real API response from OpenAI
+
+**Alternative:** Also works with `export OPENAI_APIKEY=sk-real-key` via secrets.ts normalization
 
 ---
 

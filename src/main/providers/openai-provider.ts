@@ -52,7 +52,7 @@ export class OpenAIProvider implements AgentProvider {
   }
 
   async sendMessage(message: string, context?: Record<string, unknown>): Promise<string> {
-    const apiKey = this.config.apiKey || getProviderSecret('openai', 'apiKey');
+    const apiKey = this.config.apiKey || getProviderSecret('openai', 'apiKey') || process.env.OPENAI_API_KEY;
 
     if (!apiKey) {
       throw new Error('OpenAI API key not configured');
@@ -114,7 +114,7 @@ export class OpenAIProvider implements AgentProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    const apiKey = this.config.apiKey || getProviderSecret('openai', 'apiKey');
+    const apiKey = this.config.apiKey || getProviderSecret('openai', 'apiKey') || process.env.OPENAI_API_KEY;
     return Boolean(apiKey);
   }
 }
