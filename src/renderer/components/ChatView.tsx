@@ -3,7 +3,7 @@ import { Settings, Bot } from 'lucide-react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
 import SecretRequestCard from './SecretRequestCard';
-import type { Agent, Message, ProviderInfo, WidgetRequest } from '../types';
+import type { Agent, Message, ProviderInfo, WidgetRequest, Attachment } from '../types';
 
 interface ChatViewProps {
   agent?: Agent;
@@ -150,21 +150,22 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
     setMessages(seedsByAgent[agentId] || []);
   };
 
-  const handleSendMessage = async (content: string) => {
-    if (!content.trim() || isLoading || !agent) return;
+  const handleSendMessage = async (content: string, attachments?: Attachment[]) => {
+    if ((!content.trim() && !attachments?.length) || isLoading || !agent) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       content,
       role: 'user',
       timestamp: Date.now(),
+      attachments,
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
 
     try {
-      const primaryResponse = await window.electronAPI.sendMessage(agent.id, content);
+      const primaryResponse = await window.electronAPI.sendMessage(agent.id, content, attachments);
       setMessages((prev) => [...prev, primaryResponse]);
     } catch (error) {
       console.error('Failed to send message:', error);

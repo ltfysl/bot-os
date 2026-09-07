@@ -1,5 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
+export interface Attachment {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  path?: string;
+  data?: string;
+}
+
 export interface Message {
   id: string;
   content: string;
@@ -9,6 +18,7 @@ export interface Message {
   agentName?: string;
   agentAvatar?: string;
   targetAgentId?: string;
+  attachments?: Attachment[];
 }
 
 export interface StreamChunk {
@@ -102,6 +112,7 @@ export interface RoomMessage {
   agentId?: string;
   agentName?: string;
   agentAvatar?: string;
+  attachments?: Attachment[];
 }
 
 export interface RoomStreamChunk {
@@ -136,10 +147,10 @@ export interface WidgetResponse {
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  sendMessage: (agentId: string, message: string): Promise<Message> =>
-    ipcRenderer.invoke('send-message', agentId, message),
-  sendMessageStream: (agentId: string, message: string): Promise<StreamResponse> =>
-    ipcRenderer.invoke('send-message-stream', agentId, message),
+  sendMessage: (agentId: string, message: string, attachments?: Attachment[]): Promise<Message> =>
+    ipcRenderer.invoke('send-message', agentId, message, attachments),
+  sendMessageStream: (agentId: string, message: string, attachments?: Attachment[]): Promise<StreamResponse> =>
+    ipcRenderer.invoke('send-message-stream', agentId, message, attachments),
   onMessageStreamChunk: (callback: (chunk: StreamChunk) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, chunk: StreamChunk) => callback(chunk);
     ipcRenderer.on('message-stream-chunk', handler);
@@ -195,10 +206,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('delete-room', roomId),
   getRoomMessages: (roomId: string): Promise<RoomMessage[]> =>
     ipcRenderer.invoke('get-room-messages', roomId),
-  sendRoomMessage: (roomId: string, content: string, senderId?: string): Promise<RoomMessage> =>
-    ipcRenderer.invoke('send-room-message', roomId, content, senderId),
-  sendRoomMessageStream: (roomId: string, content: string, senderId?: string): Promise<RoomMessage> =>
-    ipcRenderer.invoke('send-room-message-stream', roomId, content, senderId),
+  sendRoomMessage: (roomId: string, content: string, senderId?: string, attachments?: Attachment[]): Promise<RoomMessage> =>
+    ipcRenderer.invoke('send-room-message', roomId, content, senderId, attachments),
+  sendRoomMessageStream: (roomId: string, content: string, senderId?: string, attachments?: Attachment[]): Promise<RoomMessage> =>
+    ipcRenderer.invoke('send-room-message-stream', roomId, content, senderId, attachments),
   onRoomStreamChunk: (callback: (chunk: RoomStreamChunk) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, chunk: RoomStreamChunk) => callback(chunk);
     ipcRenderer.on('room-stream-chunk', handler);
@@ -218,4 +229,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   respondToWidget: (response: WidgetResponse): Promise<void> =>
     ipcRenderer.invoke('respond-to-widget', response),
+  pickFiles: (options?: { multiple?: boolean }): Promise<Attachment[]> =>
+    ipcRenderer.invoke('pick-files', options),
 });

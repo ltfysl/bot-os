@@ -1,3 +1,12 @@
+export interface Attachment {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  path?: string;
+  data?: string;
+}
+
 export interface Message {
   id: string;
   content: string;
@@ -7,6 +16,7 @@ export interface Message {
   agentName?: string;
   agentAvatar?: string;
   targetAgentId?: string;
+  attachments?: Attachment[];
 }
 
 export interface StreamChunk {
@@ -102,6 +112,7 @@ export interface RoomMessage {
   agentId?: string;
   agentName?: string;
   agentAvatar?: string;
+  attachments?: Attachment[];
 }
 
 export interface RoomStreamChunk {
@@ -138,8 +149,8 @@ export interface WidgetResponse {
 declare global {
   interface Window {
     electronAPI: {
-      sendMessage: (agentId: string, message: string) => Promise<Message>;
-      sendMessageStream: (agentId: string, message: string) => Promise<StreamResponse>;
+      sendMessage: (agentId: string, message: string, attachments?: Attachment[]) => Promise<Message>;
+      sendMessageStream: (agentId: string, message: string, attachments?: Attachment[]) => Promise<StreamResponse>;
       onMessageStreamChunk: (callback: (chunk: StreamChunk) => void) => (() => void);
       onWakeStreamChunk: (callback: (chunk: StreamChunk) => void) => (() => void);
       onMessageStreamError: (callback: (error: { id: string; agentId: string; error: string }) => void) => (() => void);
@@ -164,13 +175,14 @@ declare global {
       updateRoom: (roomId: string, updates: Partial<Omit<Room, 'id'>>) => Promise<Room | undefined>;
       deleteRoom: (roomId: string) => Promise<boolean>;
       getRoomMessages: (roomId: string) => Promise<RoomMessage[]>;
-      sendRoomMessage: (roomId: string, content: string, senderId?: string) => Promise<RoomMessage>;
-      sendRoomMessageStream: (roomId: string, content: string, senderId?: string) => Promise<RoomMessage>;
+      sendRoomMessage: (roomId: string, content: string, senderId?: string, attachments?: Attachment[]) => Promise<RoomMessage>;
+      sendRoomMessageStream: (roomId: string, content: string, senderId?: string, attachments?: Attachment[]) => Promise<RoomMessage>;
       onRoomStreamChunk: (callback: (chunk: RoomStreamChunk) => void) => (() => void);
       clearRoomUnread: (roomId: string) => Promise<{ success: boolean }>;
       onRoomFanInResponse: (callback: (message: RoomMessage) => void) => (() => void);
       onWidgetRequest: (callback: (request: WidgetRequest) => void) => (() => void);
       respondToWidget: (response: WidgetResponse) => Promise<void>;
+      pickFiles: (options?: { multiple?: boolean }) => Promise<Attachment[]>;
     };
   }
 }

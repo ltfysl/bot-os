@@ -2,6 +2,15 @@ import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
 
+export interface Attachment {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  path?: string;
+  data?: string;
+}
+
 export interface Room {
   id: string;
   name: string;
@@ -18,6 +27,7 @@ export interface RoomMessage {
   agentId?: string;
   agentName?: string;
   agentAvatar?: string;
+  attachments?: Attachment[];
 }
 
 export class RoomManager {

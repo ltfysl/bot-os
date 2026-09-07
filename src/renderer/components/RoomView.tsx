@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
-import type { Room, RoomMessage, Message } from '../types';
+import type { Room, RoomMessage, Message, Attachment } from '../types';
 
 interface RoomViewProps {
   room: Room;
@@ -45,8 +45,8 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
     onRoomUpdate?.();
   };
 
-  const handleSendMessage = async (content: string) => {
-    if (!content.trim() || isLoading) return;
+  const handleSendMessage = async (content: string, attachments?: Attachment[]) => {
+    if ((!content.trim() && !attachments?.length) || isLoading) return;
 
     const optimisticId = `${Date.now()}-optimistic`;
     const userMessage: RoomMessage = {
@@ -55,6 +55,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
       content,
       role: 'user',
       timestamp: Date.now(),
+      attachments,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -74,7 +75,9 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
     try {
       const response = await window.electronAPI.sendRoomMessage(
         room.id, 
-        content
+        content,
+        undefined,
+        attachments
       );
       
       setMessages((prev) => 

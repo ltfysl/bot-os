@@ -108,6 +108,18 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
               <div className={`message-text ${isError ? 'error' : ''}`}>
                 {parseInlineCode(message.content)}
               </div>
+              {message.attachments && message.attachments.length > 0 && (
+                <div className="message-attachments">
+                  {message.attachments.map((attachment) => (
+                    <div key={attachment.id} className="message-attachment">
+                      <span className="message-attachment-name">{attachment.name}</span>
+                      <span className="message-attachment-size">
+                        {(attachment.size / 1024).toFixed(1)}KB
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         );

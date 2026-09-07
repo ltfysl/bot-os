@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
+import fs from 'fs';
 import { AgentBus } from './agent-bus';
 import { MockEchoProvider, MockIntelligentProvider } from './providers/mock-providers';
 import { MiniMaxProvider } from './providers/minimax-provider';
@@ -9,7 +10,7 @@ import { AnthropicProvider } from './providers/anthropic-provider';
 import { OpenAIProvider } from './providers/openai-provider';
 import { RoutineManager, Routine, RoutineCreateInput, RoutineUpdateInput } from './routines';
 import { setProviderSecret, clearProviderSecret, loadPersistedSecrets } from './secrets';
-import { RoomManager, Room } from './rooms';
+import { RoomManager, Room, Attachment } from './rooms';
 
 let mainWindow: BrowserWindow | null = null;
 let agentBus: AgentBus;
@@ -192,7 +193,7 @@ const widgetTriggers = {
   },
 };
 
-ipcMain.handle('send-message', async (event, agentId: string, message: string) => {
+ipcMain.handle('send-message', async (event, agentId: string, message: string, attachments?: Attachment[]) => {
   const messageLower = message.toLowerCase();
   
   for (const [_type, trigger] of Object.entries(widgetTriggers)) {
@@ -219,6 +220,7 @@ ipcMain.handle('send-message', async (event, agentId: string, message: string) =
         agentName: wakeResponse.agentName,
         agentAvatar: wakeResponse.agentAvatar,
         targetAgentId: agentId,
+        attachments,
       });
     }
   );
@@ -231,10 +233,11 @@ ipcMain.handle('send-message', async (event, agentId: string, message: string) =
     agentId: primary.agentId,
     agentName: primary.agentName,
     agentAvatar: primary.agentAvatar,
+    attachments,
   };
 });
 
-ipcMain.handle('send-message-stream', async (event, agentId: string, message: string) => {
+ipcMain.handle('send-message-stream', async (event, agentId: string, message: string, attachments?: Attachment[]) => {
   const messageId = `${Date.now()}-${agentId}`;
   const primaryAgent = agentBus.getAgent(agentId);
 
@@ -255,6 +258,7 @@ ipcMain.handle('send-message-stream', async (event, agentId: string, message: st
         chunk,
         done,
         targetAgentId: agentId,
+        attachments: done ? attachments : undefined,
       });
     },
     (wokeAgentId, chunk, done) => {
@@ -403,7 +407,7 @@ ipcMain.handle('get-room-messages', async (_event, roomId: string) => {
   return roomManager.getRoomMessages(roomId);
 });
 
-ipcMain.handle('send-room-message', async (event, roomId: string, content: string, senderId?: string) => {
+ipcMain.handle('send-room-message', async (event, roomId: string, content: string, senderId?: string, attachments?: Attachment[]) => {
   const room = roomManager.getRoom(roomId);
   if (!room) {
     throw new Error(`Room not found: ${roomId}`);
@@ -415,6 +419,7 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
     content,
     role: 'user' as const,
     timestamp: Date.now(),
+    attachments,
   };
   
   roomManager.addRoomMessage(userMessage);
@@ -485,7 +490,7 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
   return userMessage;
 });
 
-ipcMain.handle('send-room-message-stream', async (event, roomId: string, content: string, senderId?: string) => {
+ipcMain.handle('send-room-message-stream', async (event, roomId: string, content: string, senderId?: string, attachments?: Attachment[]) => {
   const room = roomManager.getRoom(roomId);
   if (!room) {
     throw new Error(`Room not found: ${roomId}`);
@@ -497,6 +502,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
     content,
     role: 'user' as const,
     timestamp: Date.now(),
+    attachments,
   };
   
   roomManager.addRoomMessage(userMessage);
@@ -640,4 +646,43 @@ function extractRoomMentions(message: string, memberAgentIds: string[]): string[
 ipcMain.handle('respond-to-widget', async (_event, response) => {
   console.log('Widget response received:', response);
   return;
+});
+
+ipcMain.handle('pick-files', async (_event, options?: { multiple?: boolean }) => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: [
+      'openFile',
+      ...(options?.multiple ? ['multiSelections' as const] : []),
+    ],
+    filters: [
+      { name: 'All Files', extensions: ['*'] },
+      { name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'] },
+      { name: 'Documents', extensions: ['pdf', 'doc', 'docx', 'txt', 'md'] },
+    ],
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return [];
+  }
+
+  const attachments: Attachment[] = [];
+  for (const filePath of result.filePaths) {
+    try {
+      const stats = fs.statSync(filePath);
+      const name = path.basename(filePath);
+      const ext = path.extname(filePath).slice(1);
+      
+      attachments.push({
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        name,
+        size: stats.size,
+        type: ext || 'unknown',
+        path: filePath,
+      });
+    } catch (err) {
+      console.error(`Failed to read file ${filePath}:`, err);
+    }
+  }
+
+  return attachments;
 });

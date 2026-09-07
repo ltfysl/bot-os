@@ -1,8 +1,9 @@
 import { useState, useRef, KeyboardEvent } from 'react';
-import { Paperclip } from 'lucide-react';
+import { Paperclip, X } from 'lucide-react';
+import type { Attachment } from '../types';
 
 interface MessageComposerProps {
-  onSend: (message: string) => void;
+  onSend: (message: string, attachments?: Attachment[]) => void;
   disabled?: boolean;
 }
 
@@ -11,13 +12,14 @@ export default function MessageComposer({
   disabled = false,
 }: MessageComposerProps) {
   const [message, setMessage] = useState('');
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSend = () => {
-    if (!message.trim() || disabled) return;
-    onSend(message);
+    if ((!message.trim() && attachments.length === 0) || disabled) return;
+    onSend(message, attachments.length > 0 ? attachments : undefined);
     setMessage('');
+    setAttachments([]);
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
@@ -36,24 +38,42 @@ export default function MessageComposer({
     e.target.style.height = `${e.target.scrollHeight}px`;
   };
 
-  const handleAttachClick = () => {
-    fileInputRef.current?.click();
+  const handleAttachClick = async () => {
+    try {
+      const files = await window.electronAPI.pickFiles({ multiple: true });
+      if (files && files.length > 0) {
+        setAttachments((prev) => [...prev, ...files]);
+      }
+    } catch (err) {
+      console.error('Failed to pick files:', err);
+    }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files.length > 0) {
-      // Noop for now - file attachments not implemented
-      console.log('File selected (not yet implemented):', files[0].name);
-    }
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+  const handleRemoveAttachment = (attachmentId: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== attachmentId));
   };
 
   return (
     <div className="compose-container">
+      {attachments.length > 0 && (
+        <div className="compose-attachments">
+          {attachments.map((attachment) => (
+            <div key={attachment.id} className="attachment-chip">
+              <span className="attachment-name">{attachment.name}</span>
+              <span className="attachment-size">
+                {(attachment.size / 1024).toFixed(1)}KB
+              </span>
+              <button
+                className="attachment-remove"
+                onClick={() => handleRemoveAttachment(attachment.id)}
+                aria-label="Remove attachment"
+              >
+                <X size={14} strokeWidth={2} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="compose-wrapper">
         <textarea
           ref={textareaRef}
@@ -66,23 +86,18 @@ export default function MessageComposer({
           rows={1}
         />
         <div className="compose-actions">
-          <input
-            ref={fileInputRef}
-            type="file"
-            onChange={handleFileChange}
-            style={{ display: 'none' }}
-          />
           <button
             className="compose-attach"
             title="Attach file"
             onClick={handleAttachClick}
+            disabled={disabled}
           >
             <Paperclip size={16} strokeWidth={2} />
           </button>
           <button
             className="compose-send"
             onClick={handleSend}
-            disabled={!message.trim() || disabled}
+            disabled={(!message.trim() && attachments.length === 0) || disabled}
           >
             Send
           </button>
