@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { X, MoreVertical } from 'lucide-react';
 import type { Routine, RoutineCreateInput } from '../types';
 
 interface RoutinesViewProps {
@@ -104,7 +105,9 @@ export default function RoutinesView({ onClose }: RoutinesViewProps) {
       <div className="main-content">
         <div className="routines-header">
           <span className="routines-title">Routines</span>
-          <button className="routines-close" onClick={onClose}>✕</button>
+          <button className="routines-close" onClick={onClose}>
+            <X size={16} strokeWidth={2} />
+          </button>
         </div>
         <div className="routines-container">
           <div className="routines-loading">Loading...</div>
@@ -117,13 +120,17 @@ export default function RoutinesView({ onClose }: RoutinesViewProps) {
     <div className="main-content">
       <div className="routines-header">
         <span className="routines-title">Routines</span>
-        <button className="routines-close" onClick={onClose}>✕</button>
+        <button className="routines-close" onClick={onClose}>
+          <X size={16} strokeWidth={2} />
+        </button>
       </div>
       <div className="routines-container">
         {error && (
           <div className="routines-error">
             {error}
-            <button onClick={() => setError(null)}>✕</button>
+            <button onClick={() => setError(null)}>
+              <X size={14} strokeWidth={2} />
+            </button>
           </div>
         )}
         {routines.length === 0 ? (
@@ -156,7 +163,7 @@ export default function RoutinesView({ onClose }: RoutinesViewProps) {
                       onClick={() => handleDelete(routine.id, routine.name)}
                       title="Delete"
                     >
-                      ⋯
+                      <MoreVertical size={16} strokeWidth={2} />
                     </button>
                   </div>
                 </div>
@@ -176,7 +183,7 @@ export default function RoutinesView({ onClose }: RoutinesViewProps) {
             <div className="create-sheet-header">
               <span className="create-sheet-title">New routine</span>
               <button className="create-sheet-close" onClick={() => setShowCreate(false)}>
-                ✕
+                <X size={16} strokeWidth={2} />
               </button>
             </div>
             <div className="create-sheet-body">

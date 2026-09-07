@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Settings, Bot } from 'lucide-react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
 import SecretRequestCard from './SecretRequestCard';
@@ -147,7 +148,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
     return (
       <div className="main-content">
         <div className="empty-state">
-          <div className="empty-icon">🤖</div>
+          <Bot size={32} strokeWidth={1.5} className="empty-icon" />
           <div className="empty-title">No Agent Selected</div>
           <div className="empty-description">
             Select an agent from the sidebar
@@ -168,7 +169,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
             onClick={() => setShowProviders(!showProviders)}
             title="Switch provider"
           >
-            ⚙
+            <Settings size={16} strokeWidth={2} />
           </button>
           {showProviders && (
             <div className="provider-menu">

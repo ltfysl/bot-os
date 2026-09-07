@@ -59,7 +59,7 @@ app.whenReady().then(() => {
     id: '1',
     name: 'Assistant',
     providerId: 'mock-intelligent',
-    avatar: '🤖',
+    avatar: 'AS',
     status: 'active',
     unread: 0,
   });
@@ -68,7 +68,7 @@ app.whenReady().then(() => {
     id: '2',
     name: 'Researcher',
     providerId: 'mock-echo',
-    avatar: '📚',
+    avatar: 'RE',
     status: 'idle',
     unread: 2,
   });
@@ -77,7 +77,7 @@ app.whenReady().then(() => {
     id: '3',
     name: 'Coder',
     providerId: 'mock-intelligent',
-    avatar: '💻',
+    avatar: 'CO',
     status: 'active',
     unread: 0,
   });

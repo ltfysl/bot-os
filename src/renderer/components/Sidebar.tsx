@@ -1,3 +1,4 @@
+import { Clock, MessageSquare } from 'lucide-react';
 import type { Agent, Room } from '../types';
 
 interface SidebarProps {
@@ -36,7 +37,7 @@ export default function Sidebar({
             onClick={() => onAgentSelect(agent.id)}
           >
             <div className="agent-rail-avatar">
-              {agent.avatar}
+              <span className="agent-initials">{agent.avatar}</span>
               <div className={`agent-rail-status ${agent.status}`} />
             </div>
             <div className="agent-rail-name">{agent.name}</div>
@@ -55,7 +56,7 @@ export default function Sidebar({
             onClick={() => onRoomSelect(room.id)}
           >
             <div className="agent-rail-avatar room-avatar">
-              💬
+              <MessageSquare size={18} strokeWidth={2} />
             </div>
             <div className="agent-rail-name">{room.name}</div>
             {room.unread && room.unread > 0 && (
@@ -70,7 +71,7 @@ export default function Sidebar({
           onClick={onRoutinesClick}
           title="Routines"
         >
-          <span className="sidebar-footer-icon">⏰</span>
+          <Clock size={20} strokeWidth={2} className="sidebar-footer-icon" />
         </button>
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useState, useRef, KeyboardEvent } from 'react';
+import { Paperclip } from 'lucide-react';
 
 interface MessageComposerProps {
   onSend: (message: string) => void;
@@ -76,7 +77,7 @@ export default function MessageComposer({
             title="Attach file"
             onClick={handleAttachClick}
           >
-            📎
+            <Paperclip size={16} strokeWidth={2} />
           </button>
           <button
             className="compose-send"
