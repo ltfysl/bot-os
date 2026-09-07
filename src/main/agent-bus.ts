@@ -262,6 +262,10 @@ export class AgentBus {
       return hasProviderSecret('anthropic', 'apiKey');
     }
     
+    if (providerId === 'openai') {
+      return hasProviderSecret('openai', 'apiKey') || Boolean(process.env.OPENAI_API_KEY);
+    }
+    
     return false;
   }
 }

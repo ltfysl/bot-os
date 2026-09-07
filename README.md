@@ -150,6 +150,7 @@ interface AgentProvider {
 - `ZaiProvider` - Z.ai GLM-5.3 model via OpenAI-compatible endpoint (unavailable without credentials)
 - `CodingPlanProvider` - OpenAI-compatible coding assistance endpoint (unavailable without credentials)
 - `AnthropicProvider` - Anthropic Claude via Messages API (see Configuration below)
+- `OpenAIProvider` - OpenAI Chat Completions API (see Configuration below)
 
 **Provider Pluggability:**
 - Providers register at startup via `AgentBus` constructor
@@ -159,10 +160,24 @@ interface AgentProvider {
 - Renderer sees only `{ providerId, hasSecret, isAvailable }` status
 
 **Future Providers:**
-- OpenAI, Anthropic, local models (Ollama, LM Studio)
+- Local models (Ollama, LM Studio)
 - Custom provider plugins following the `AgentProvider` interface
 
 ### Provider Configuration
+
+#### OpenAI Provider
+To enable the OpenAI provider, set your API key via environment variable:
+
+```bash
+export OPENAI_API_KEY=your_api_key_here
+npm start
+```
+
+The provider will automatically become available when a valid key is present. Without a key, it remains listed but shows as unavailable. The default model is `gpt-4o-mini` for efficient short-beat responses. Optional `OPENAI_BASE_URL` can be set to override the default Chat Completions API endpoint.
+
+**Get your API key:** Visit [OpenAI Platform](https://platform.openai.com/) to create an account and generate an API key.
+
+**Note:** The provider also accepts `OPENAI_APIKEY` (no underscore before KEY) via the secrets persistence layer, but `OPENAI_API_KEY` is the industry-standard variable name.
 
 #### MiniMax Provider
 To enable the MiniMax provider, set your API key via environment variable:
