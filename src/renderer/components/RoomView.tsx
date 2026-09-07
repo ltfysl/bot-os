@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
-import type { Room, RoomMessage, Message } from '../types';
+import type { Room, RoomMessage, Message, RoomStreamChunk } from '../types';
 
 interface RoomViewProps {
   room: Room;
@@ -9,8 +9,21 @@ interface RoomViewProps {
   onRoomUpdate?: () => void;
 }
 
+interface StreamingRoomMessage {
+  id: string;
+  roomId: string;
+  content: string;
+  role: 'assistant';
+  timestamp: number;
+  agentId?: string;
+  agentName?: string;
+  agentAvatar?: string;
+  isStreaming: boolean;
+}
+
 export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) {
   const [messages, setMessages] = useState<RoomMessage[]>([]);
+  const [streamingMessage, setStreamingMessage] = useState<StreamingRoomMessage | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingTimeoutId, setLoadingTimeoutId] = useState<number | undefined>(undefined);
 
@@ -35,6 +48,72 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
     return () => unsubscribe();
   }, [room.id, onRoomUpdate, loadingTimeoutId]);
 
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onRoomStreamChunk((chunk: RoomStreamChunk) => {
+      if (chunk.roomId === room.id) {
+        if (!chunk.done) {
+          setStreamingMessage((prev) => {
+            if (prev && prev.id === chunk.id) {
+              return {
+                ...prev,
+                content: prev.content + chunk.chunk,
+              };
+            } else {
+              return {
+                id: chunk.id,
+                roomId: chunk.roomId,
+                content: chunk.chunk,
+                role: 'assistant',
+                timestamp: Date.now(),
+                agentId: chunk.agentId,
+                agentName: chunk.agentName,
+                agentAvatar: chunk.agentAvatar,
+                isStreaming: true,
+              };
+            }
+          });
+        } else {
+          setStreamingMessage((prev) => {
+            if (prev && prev.id === chunk.id) {
+              const finalMessage: RoomMessage = {
+                id: prev.id,
+                roomId: prev.roomId,
+                content: prev.content + chunk.chunk,
+                role: prev.role,
+                timestamp: prev.timestamp,
+                agentId: prev.agentId,
+                agentName: prev.agentName,
+                agentAvatar: prev.agentAvatar,
+              };
+              setMessages((msgs) => [...msgs, finalMessage]);
+              return null;
+            } else if (!prev && chunk.chunk) {
+              const finalMessage: RoomMessage = {
+                id: chunk.id,
+                roomId: chunk.roomId,
+                content: chunk.chunk,
+                role: 'assistant',
+                timestamp: Date.now(),
+                agentId: chunk.agentId,
+                agentName: chunk.agentName,
+                agentAvatar: chunk.agentAvatar,
+              };
+              setMessages((msgs) => [...msgs, finalMessage]);
+              return null;
+            }
+            return prev;
+          });
+          setIsLoading(false);
+          if (loadingTimeoutId) {
+            clearTimeout(loadingTimeoutId);
+            setLoadingTimeoutId(undefined);
+          }
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, [room.id, loadingTimeoutId]);
+
   const loadMessages = async () => {
     const roomMessages = await window.electronAPI.getRoomMessages(room.id);
     setMessages(roomMessages);
@@ -58,6 +137,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    setStreamingMessage(null);
     
     const mentionedAgents = extractMentions(content);
     const willWakeAgents = mentionedAgents.length > 0;
@@ -72,7 +152,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
     }
 
     try {
-      const response = await window.electronAPI.sendRoomMessage(
+      const response = await window.electronAPI.sendRoomMessageStream(
         room.id, 
         content
       );
@@ -95,11 +175,30 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
       };
       setMessages((prev) => [...prev, errorMessage]);
       setIsLoading(false);
+      setStreamingMessage(null);
       if (loadingTimeoutId) {
         clearTimeout(loadingTimeoutId);
         setLoadingTimeoutId(undefined);
       }
     }
+  };
+
+  const handleStopStreaming = () => {
+    if (streamingMessage) {
+      const finalMessage: RoomMessage = {
+        id: streamingMessage.id,
+        roomId: streamingMessage.roomId,
+        content: streamingMessage.content,
+        role: streamingMessage.role,
+        timestamp: streamingMessage.timestamp,
+        agentId: streamingMessage.agentId,
+        agentName: streamingMessage.agentName,
+        agentAvatar: streamingMessage.agentAvatar,
+      };
+      setMessages((prev) => [...prev, finalMessage]);
+      setStreamingMessage(null);
+    }
+    setIsLoading(false);
   };
 
   const extractMentions = (message: string): string[] => {
@@ -142,6 +241,17 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
     agentAvatar: msg.agentAvatar,
   }));
 
+  const streamingAsGeneric = streamingMessage ? {
+    id: streamingMessage.id,
+    content: streamingMessage.content,
+    role: 'assistant' as const,
+    timestamp: streamingMessage.timestamp,
+    agentId: streamingMessage.agentId,
+    agentName: streamingMessage.agentName,
+    agentAvatar: streamingMessage.agentAvatar,
+    isStreaming: true,
+  } : null;
+
   return (
     <div className="main-content">
       <div className="chat-header">
@@ -160,18 +270,24 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
         </div>
       </div>
       <div className="chat-container">
-        {messages.length === 0 ? (
+        {messages.length === 0 && !streamingMessage ? (
           <div className="empty-room">No messages yet</div>
         ) : (
           <MessageList 
-            messages={messagesAsGeneric} 
+            messages={messagesAsGeneric}
+            streamingMessage={streamingAsGeneric} 
             isLoading={isLoading} 
             agentName={lastAssistantMessage?.agentName}
             agentAvatar={lastAssistantMessage?.agentAvatar}
           />
         )}
       </div>
-      <MessageComposer onSend={handleSendMessage} disabled={isLoading} />
+      <MessageComposer 
+        onSend={handleSendMessage}
+        onStop={handleStopStreaming}
+        disabled={isLoading && !streamingMessage}
+        isStreaming={!!streamingMessage}
+      />
     </div>
   );
 }

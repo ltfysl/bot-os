@@ -3,7 +3,7 @@ import { Settings, Bot } from 'lucide-react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
 import SecretRequestCard from './SecretRequestCard';
-import type { Agent, Message, ProviderInfo, WidgetRequest } from '../types';
+import type { Agent, Message, ProviderInfo, WidgetRequest, StreamChunk } from '../types';
 
 interface ChatViewProps {
   agent?: Agent;
@@ -16,8 +16,20 @@ interface ResolvedWidget {
   timestamp: number;
 }
 
+interface StreamingMessage {
+  id: string;
+  content: string;
+  role: 'assistant';
+  timestamp: number;
+  agentId?: string;
+  agentName?: string;
+  agentAvatar?: string;
+  isStreaming: boolean;
+}
+
 export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [streamingMessage, setStreamingMessage] = useState<StreamingMessage | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [showProviders, setShowProviders] = useState(false);
@@ -46,6 +58,65 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
     const unsubscribe = window.electronAPI.onWakeResponse((message: Message) => {
       if (message.targetAgentId === agent?.id) {
         setMessages((prev) => [...prev, message]);
+      }
+    });
+    return () => unsubscribe();
+  }, [agent?.id]);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onMessageStreamChunk((chunk: StreamChunk) => {
+      if (chunk.targetAgentId === agent?.id) {
+        if (!chunk.done) {
+          setStreamingMessage((prev) => {
+            if (prev && prev.id === chunk.id) {
+              return {
+                ...prev,
+                content: prev.content + chunk.chunk,
+              };
+            } else {
+              return {
+                id: chunk.id,
+                content: chunk.chunk,
+                role: 'assistant',
+                timestamp: Date.now(),
+                agentId: chunk.agentId,
+                agentName: chunk.agentName,
+                agentAvatar: chunk.agentAvatar,
+                isStreaming: true,
+              };
+            }
+          });
+        } else {
+          setStreamingMessage((prev) => {
+            if (prev && prev.id === chunk.id) {
+              const finalMessage: Message = {
+                id: prev.id,
+                content: prev.content + chunk.chunk,
+                role: prev.role,
+                timestamp: prev.timestamp,
+                agentId: prev.agentId,
+                agentName: prev.agentName,
+                agentAvatar: prev.agentAvatar,
+              };
+              setMessages((msgs) => [...msgs, finalMessage]);
+              return null;
+            } else if (!prev && chunk.chunk) {
+              const finalMessage: Message = {
+                id: chunk.id,
+                content: chunk.chunk,
+                role: 'assistant',
+                timestamp: Date.now(),
+                agentId: chunk.agentId,
+                agentName: chunk.agentName,
+                agentAvatar: chunk.agentAvatar,
+              };
+              setMessages((msgs) => [...msgs, finalMessage]);
+              return null;
+            }
+            return prev;
+          });
+          setIsLoading(false);
+        }
       }
     });
     return () => unsubscribe();
@@ -162,10 +233,10 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
 
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
+    setStreamingMessage(null);
 
     try {
-      const primaryResponse = await window.electronAPI.sendMessage(agent.id, content);
-      setMessages((prev) => [...prev, primaryResponse]);
+      await window.electronAPI.sendMessageStream(agent.id, content);
     } catch (error) {
       console.error('Failed to send message:', error);
       const errorMessage: Message = {
@@ -175,9 +246,26 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, errorMessage]);
-    } finally {
       setIsLoading(false);
+      setStreamingMessage(null);
     }
+  };
+
+  const handleStopStreaming = () => {
+    if (streamingMessage) {
+      const finalMessage: Message = {
+        id: streamingMessage.id,
+        content: streamingMessage.content,
+        role: streamingMessage.role,
+        timestamp: streamingMessage.timestamp,
+        agentId: streamingMessage.agentId,
+        agentName: streamingMessage.agentName,
+        agentAvatar: streamingMessage.agentAvatar,
+      };
+      setMessages((prev) => [...prev, finalMessage]);
+      setStreamingMessage(null);
+    }
+    setIsLoading(false);
   };
 
   if (!agent) {
@@ -237,6 +325,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
       <div className="chat-container">
         <MessageList 
           messages={messages} 
+          streamingMessage={streamingMessage}
           isLoading={isLoading} 
           agentName={agent.name} 
           agentAvatar={agent.avatar}
@@ -245,7 +334,12 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
           onWidgetResolve={handleWidgetResolve}
         />
       </div>
-      <MessageComposer onSend={handleSendMessage} disabled={isLoading} />
+      <MessageComposer 
+        onSend={handleSendMessage} 
+        onStop={handleStopStreaming}
+        disabled={isLoading && !streamingMessage}
+        isStreaming={!!streamingMessage}
+      />
       
       {showSecretCard && secretCardProvider && (
         <SecretRequestCard

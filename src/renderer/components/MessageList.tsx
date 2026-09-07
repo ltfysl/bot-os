@@ -9,8 +9,20 @@ interface ResolvedWidget {
   timestamp: number;
 }
 
+interface StreamingMessage {
+  id: string;
+  content: string;
+  role: 'assistant';
+  timestamp: number;
+  agentId?: string;
+  agentName?: string;
+  agentAvatar?: string;
+  isStreaming: boolean;
+}
+
 interface MessageListProps {
   messages: Message[];
+  streamingMessage?: StreamingMessage | null;
   isLoading: boolean;
   agentName?: string;
   agentAvatar?: string;
@@ -47,18 +59,18 @@ function parseInlineCode(text: string): (string | JSX.Element)[] {
   return parts.length > 0 ? parts : [text];
 }
 
-export default function MessageList({ messages, isLoading, agentName, agentAvatar, widgetRequest, resolvedWidgets = [], onWidgetResolve }: MessageListProps) {
+export default function MessageList({ messages, streamingMessage, isLoading, agentName, agentAvatar, widgetRequest, resolvedWidgets = [], onWidgetResolve }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, widgetRequest]);
+  }, [messages, streamingMessage, widgetRequest]);
 
   const lastAssistantMessage = messages.filter((m) => m.role === 'assistant').at(-1);
   const hasAssistantMessage = lastAssistantMessage !== undefined;
   const useNeutralChrome = !hasAssistantMessage && !agentName && !agentAvatar;
 
-  const showEmptyState = messages.length === 0 && !widgetRequest && !isLoading;
+  const showEmptyState = messages.length === 0 && !widgetRequest && !isLoading && !streamingMessage;
 
   const renderAvatar = (role: 'user' | 'assistant', avatarText?: string, forceNeutral = false) => {
     if (role === 'user') {
@@ -137,7 +149,25 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
           </div>
         </div>
       )}
-      {isLoading && (
+      {streamingMessage && (
+        <div className="message assistant">
+          <div className="message-avatar">
+            {renderAvatar('assistant', streamingMessage.agentAvatar)}
+          </div>
+          <div className="message-content">
+            <div className="message-header">
+              <span className="message-author">
+                {streamingMessage.agentName || 'Assistant'}
+              </span>
+            </div>
+            <div className="message-text streaming">
+              {parseInlineCode(streamingMessage.content)}
+              <span className="streaming-caret"></span>
+            </div>
+          </div>
+        </div>
+      )}
+      {isLoading && !streamingMessage && (
         <div className="message assistant">
           <div className="message-avatar">
             {useNeutralChrome ? (
