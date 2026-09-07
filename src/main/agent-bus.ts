@@ -408,6 +408,10 @@ export class AgentBus {
       return hasProviderSecret('openai', 'apiKey') || Boolean(process.env.OPENAI_API_KEY);
     }
     
+    if (providerId === 'gemini') {
+      return hasProviderSecret('gemini', 'apiKey') || Boolean(process.env.GEMINI_API_KEY);
+    }
+    
     return false;
   }
 }
