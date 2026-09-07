@@ -4,6 +4,47 @@ This file contains summaries and quick links to verification evidence for BotOS 
 
 ---
 
+## PR #29 - Inline Question Widgets
+
+**Branch:** `cursor/inline-question-widgets-d5be`  
+**Date:** 2026-09-07  
+**Commit:** 39b1fb0  
+**Status:** ✅ Build Pass, ✅ Code Verified, ⚠️ GUI Unavailable  
+
+**What changed:**
+- Added inline question widget system (`WidgetCard.tsx`)
+- Premium floating card chrome matching `SecretRequestCard` family
+- Four widget types: single-select, multi-select, danger, allow-custom
+- IPC seam: `onWidgetRequest` / `respondToWidget` (secret-safe)
+- Resolved widgets persist as checked summaries in transcript
+- Widgets render even when chat is empty (no messages)
+- Demo triggers via keyword detection in messages
+
+**Build checks:**
+- ✅ `npm install` - 317 packages, no errors
+- ✅ `npm run type-check` - TypeScript compilation clean
+- ✅ `npm run build` - Main + renderer builds successful (169.74 kB)
+
+**Nyx Feel Compliance:**
+- ✅ Hairline border, calm dark fill, soft shadow
+- ✅ Lucide 14-16px icons (Check for resolved state)
+- ✅ 4-8px internal rhythm
+- ✅ Chip/row layouts based on option count
+- ✅ States: idle → selected → submitting → resolved
+- ✅ No Slack Block Kit / SaaS survey chrome
+
+**Manual testing plan:**
+1. Send "pick one" → single-select widget appears
+2. Send "select multiple" → multi-select widget appears
+3. Send "delete" → danger widget with red styling
+4. Send "enter value" → allow-custom with text input
+5. Verify resolved state persists as checked summary
+6. Verify widgets appear in empty chat (zero messages)
+
+**Details:** See full notes below (Widget System Components section)
+
+---
+
 ## PR #28 - OpenAI Provider with Secret-Safe Pattern
 
 **Branch:** `cursor/openai-provider-secret-safe-2dd7`  
@@ -80,176 +121,65 @@ This file contains summaries and quick links to verification evidence for BotOS 
 
 ---
 
-**Branch:** `cursor/visual-redesign-icons-dense-chat-cbdf`  
-**Commit SHA:** `825b0ad`  
-**Commit Message:** "fix: Nyx review - tighten density, remove emoji, quiet thinking, premium polish"  
-**PR:** https://github.com/ltfysl/bot-os/pull/27  
-**Verification Date:** 2026-09-07  
+# Detailed Widget System Components (PR #29)
 
----
+## Widget Types
 
-## Build Status: ✅ PASS
+1. **WidgetCard.tsx** - Premium inline question component
+   - Single-select (auto-submit on selection)
+   - Multi-select (with Confirm button)
+   - Danger mode (destructive action styling)
+   - Allow-custom (preset options + custom text input)
 
-All required build checks passed successfully:
+2. **CSS Styling** - Matching SecretRequestCard family
+   - Hairline border, calm dark fill, soft shadow
+   - 4-8px rhythm inside cards
+   - Quiet accent states for selected options
+   - Resolved state collapses to checked summary
+   - No emoji chrome (lucide icons only)
 
-1. **npm install**: ✅ Completed (43.7s)
-   - 317 packages installed
-   - No blocking issues
+3. **IPC Seam** - Secret-safe renderer/main boundary
+   - `onWidgetRequest` - Renderer listens for widget requests
+   - `respondToWidget` - Renderer sends widget responses
+   - Types fully defined in preload.ts and types.ts
 
-2. **npm run type-check**: ✅ Passed (1.4s)
-   - TypeScript compilation successful
-   - No type errors
+4. **Demo Triggers** - Keyword detection in main.ts
+   - "pick one" / "choose one" → single-select widget
+   - "select multiple" / "pick several" → multi-select widget
+   - "delete" / "remove" → danger widget
+   - "custom input" / "enter value" → allow-custom widget
 
-3. **npm run build**: ✅ Passed (2.3s)
-   - Main process build: Success
-   - Renderer process build: Success
-   - Vite production bundle: 165.56 kB (gzipped: 52.17 kB)
+## Architecture Notes
 
----
+- One widget at a time (no stacking)
+- Mounts inline in MessageList between agent avatar and message content
+- Auto-scrolls transcript when widget appears
+- Composer remains honest below (no overlap)
+- Error handling with muted inline error text
+- Resolved widgets persist in `resolvedWidgets[]` state array
+- Widgets render even when `messages.length === 0`
 
-## Source Code Verification
+## Visual Compliance (Nyx Feel Bar)
 
-### 1. Dense Chat Gaps ~5px ✅ VERIFIED
+✅ Surface: Premium floating card in chat column  
+✅ Border: Hairline with calm dark fill  
+✅ Shadow: Soft shadow on card only  
+✅ Icons: Lucide 14-16px (Check icon for resolved state)  
+✅ Density: 4-8px internal rhythm  
+✅ States: idle → selected → submitting → resolved  
+✅ Anti-patterns avoided: No Slack Block Kit, no SaaS survey chrome, no emoji icons
 
-**Location:** `src/renderer/index.css` lines 418-424
+## Files Changed
 
-```css
-.chat-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 12px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;  /* ← CONFIRMED: 5px gap between messages */
-}
-```
+- `src/renderer/components/WidgetCard.tsx` (new)
+- `src/renderer/components/ChatView.tsx` (modified)
+- `src/renderer/components/MessageList.tsx` (modified)
+- `src/renderer/types.ts` (modified)
+- `src/renderer/index.css` (modified)
+- `src/main/preload.ts` (modified)
+- `src/main/main.ts` (modified)
 
-**Status:** Message spacing is correctly set to `gap: 5px` for dense chat layout.
+## Widget System Fixes (39b1fb0)
 
----
-
-### 2. No Emoji in Chrome (get-channels) ✅ VERIFIED
-
-**Location:** `src/main/main.ts` lines 160-166
-
-```typescript
-ipcMain.handle('get-channels', async () => {
-  return [
-    { id: '1', name: 'General', icon: '' },      /* ← CONFIRMED: Empty icon string */
-    { id: '2', name: 'Development', icon: '' },  /* ← CONFIRMED: Empty icon string */
-    { id: '3', name: 'Research', icon: '' },     /* ← CONFIRMED: Empty icon string */
-  ];
-});
-```
-
-**Status:** All channel icons are now empty strings (`icon: ''`), no emojis present.
-
----
-
-### 3. Thinking Indicator "…" ✅ VERIFIED
-
-**Location:** `src/renderer/components/MessageList.tsx` lines 103-117
-
-```tsx
-{isLoading && (
-  <div className="message assistant">
-    <div className="message-avatar">
-      {renderAvatar('assistant', lastAssistantMessage?.agentAvatar || agentAvatar)}
-    </div>
-    <div className="message-content">
-      <div className="message-header">
-        <span className="message-author">
-          {lastAssistantMessage?.agentName || agentName || 'Assistant'}
-        </span>
-      </div>
-      <div className="message-text" style={{ opacity: 0.5 }}>
-        …  {/* ← CONFIRMED: Single ellipsis character, quiet opacity 0.5 */}
-      </div>
-    </div>
-  </div>
-)}
-```
-
-**Status:** Thinking indicator uses single ellipsis character "…" with reduced opacity (0.5) for quiet, premium feel.
-
----
-
-### 4. Tighter Rail/Header/Composer ✅ VERIFIED
-
-#### **Sidebar Rail** - `src/renderer/index.css`
-
-```css
-.sidebar {
-  width: 64px;           /* Lines 99-100: Narrow 64px rail */
-  min-width: 64px;
-}
-
-.sidebar-header {
-  padding: 14px 10px;    /* Line 114: Compact header padding */
-}
-
-.agent-rail-item {
-  gap: 3px;              /* Line 249: Tight 3px gap */
-  padding: 8px 6px;      /* Line 250: Compact item padding */
-  margin: 2px 6px;       /* Line 251: Minimal margin */
-}
-```
-
-#### **Chat Header** - `src/renderer/index.css`
-
-```css
-.chat-header {
-  height: 44px;          /* Line 376: Compact 44px height */
-  min-height: 44px;      /* Line 377: Minimum height locked */
-  padding: 0 16px;       /* Line 378: Tight horizontal padding */
-}
-```
-
-#### **Message Composer** - `src/renderer/index.css`
-
-```css
-.compose-container {
-  padding: 10px 16px 12px;  /* Line 523: Reduced padding (10-12px) */
-}
-
-.compose-wrapper {
-  padding: 8px 10px;        /* Line 534: Compact internal padding */
-}
-
-.compose-input {
-  min-height: 21px;         /* Line 550: Minimal input height */
-}
-```
-
-**Status:** All UI components use tighter spacing consistent with dense, premium design:
-- Rail: 64px width, 8-14px padding
-- Header: 44px height, 16px horizontal padding  
-- Composer: 10-12px padding, 21px min input height
-
----
-
-## GUI Testing: ⚠️ NOT AVAILABLE
-
-**Environment:** Cloud Agent VM (Linux 6.12.94+)  
-**Status:** No Electron GUI available for manual visual testing  
-
-**Impact:** Unable to perform runtime visual verification of:
-- Actual rendered chat message spacing
-- Visual density of rail/header/composer interaction
-- Thinking indicator animation/appearance
-- Overall premium polish visual quality
-
-**Mitigation:** All changes verified through source code inspection. CSS values and React component rendering logic confirm expected behavior.
-
----
-
-## Summary
-
-✅ **All build checks passed** - No type errors or build failures  
-✅ **Dense chat gaps confirmed** - 5px message spacing in CSS  
-✅ **Emoji removed from channels** - Empty icon strings in get-channels handler  
-✅ **Thinking indicator quieted** - Single "…" with 0.5 opacity  
-✅ **Tighter spacing verified** - Rail (64px), header (44px), composer (10-12px) all use compact dimensions  
-⚠️ **GUI testing unavailable** - Cloud agent environment lacks Electron display capabilities  
-
-**Recommendation:** Changes align with Nyx review requirements for density, icon cleanup, and premium polish. Source code verification confirms all specified improvements are implemented correctly. Manual GUI testing recommended in local development environment for final visual QA.
+1. **Resolved state persistence** - Widget collapses to durable checked summary that stays visible in transcript
+2. **Empty chat rendering** - Widgets render even when `messages.length === 0` (removed early return)

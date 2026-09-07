@@ -83,6 +83,27 @@ export interface RoomMessage {
   agentAvatar?: string;
 }
 
+export type WidgetType = 'single-select' | 'multi-select' | 'danger' | 'allow-custom';
+
+export interface WidgetOption {
+  id: string;
+  label: string;
+}
+
+export interface WidgetRequest {
+  id: string;
+  type: WidgetType;
+  title?: string;
+  options: WidgetOption[];
+}
+
+export interface WidgetResponse {
+  widgetId: string;
+  selected: string[];
+  customValue?: string;
+  dismissed: boolean;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   sendMessage: (agentId: string, message: string): Promise<Message> =>
     ipcRenderer.invoke('send-message', agentId, message),
@@ -133,4 +154,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('room-fan-in-response', handler);
     return () => ipcRenderer.removeListener('room-fan-in-response', handler);
   },
+  onWidgetRequest: (callback: (request: WidgetRequest) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, request: WidgetRequest) => callback(request);
+    ipcRenderer.on('widget-request', handler);
+    return () => ipcRenderer.removeListener('widget-request', handler);
+  },
+  respondToWidget: (response: WidgetResponse): Promise<void> =>
+    ipcRenderer.invoke('respond-to-widget', response),
 });

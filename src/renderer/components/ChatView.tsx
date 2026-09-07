@@ -3,11 +3,17 @@ import { Settings, Bot } from 'lucide-react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
 import SecretRequestCard from './SecretRequestCard';
-import type { Agent, Message, ProviderInfo } from '../types';
+import type { Agent, Message, ProviderInfo, WidgetRequest } from '../types';
 
 interface ChatViewProps {
   agent?: Agent;
   onAgentsChange: () => void;
+}
+
+interface ResolvedWidget {
+  id: string;
+  summary: string;
+  timestamp: number;
 }
 
 export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
@@ -17,6 +23,8 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   const [showProviders, setShowProviders] = useState(false);
   const [showSecretCard, setShowSecretCard] = useState(false);
   const [secretCardProvider, setSecretCardProvider] = useState<{ id: string; name: string } | null>(null);
+  const [widgetRequest, setWidgetRequest] = useState<WidgetRequest | null>(null);
+  const [resolvedWidgets, setResolvedWidgets] = useState<ResolvedWidget[]>([]);
   const providerMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -42,6 +50,13 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
     });
     return () => unsubscribe();
   }, [agent?.id]);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onWidgetRequest((request: WidgetRequest) => {
+      setWidgetRequest(request);
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -83,6 +98,24 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   const handleSecretSuccess = async () => {
     await loadProviders();
     onAgentsChange();
+  };
+
+  const handleWidgetResolve = (response: { selected: string[]; customValue?: string; dismissed: boolean }) => {
+    if (!response.dismissed && widgetRequest) {
+      const resolvedSummary = response.customValue?.trim() 
+        ? response.customValue 
+        : response.selected
+            .map(id => widgetRequest.options.find(opt => opt.id === id)?.label)
+            .filter(Boolean)
+            .join(', ');
+
+      setResolvedWidgets((prev) => [...prev, {
+        id: widgetRequest.id,
+        summary: resolvedSummary,
+        timestamp: Date.now(),
+      }]);
+    }
+    setWidgetRequest(null);
   };
   const loadSeedMessages = (agentId: string) => {
     const seedsByAgent: Record<string, Message[]> = {
@@ -202,7 +235,15 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
         </div>
       </div>
       <div className="chat-container">
-        <MessageList messages={messages} isLoading={isLoading} agentName={agent.name} agentAvatar={agent.avatar} />
+        <MessageList 
+          messages={messages} 
+          isLoading={isLoading} 
+          agentName={agent.name} 
+          agentAvatar={agent.avatar}
+          widgetRequest={widgetRequest}
+          resolvedWidgets={resolvedWidgets}
+          onWidgetResolve={handleWidgetResolve}
+        />
       </div>
       <MessageComposer onSend={handleSendMessage} disabled={isLoading} />
       
