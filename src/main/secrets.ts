@@ -87,6 +87,7 @@ export async function clearProviderSecret(providerId: string, key: string): Prom
   return false;
 }
 
-export function clearProviderSecrets(providerId: string): void {
+export async function clearProviderSecrets(providerId: string): Promise<void> {
   delete secrets[providerId];
+  await persistSecrets();
 }
