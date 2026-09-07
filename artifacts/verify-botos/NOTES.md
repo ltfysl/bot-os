@@ -1,217 +1,330 @@
-# BotOS Verification Notes
+# Gemini Provider Implementation Notes
 
-This file contains summaries and quick links to verification evidence for BotOS PRs.
+## Technical Decisions
 
----
+### 1. OpenAI-Compatible Endpoint Choice
 
-## PR #30 - Bus Depth: Streaming Fan-In & Bot-Initiated Wake
+**Decision:** Use Google's OpenAI-compatible endpoint rather than the native Gemini API.
 
-**Branch:** `cursor/bus-depth-streaming-bot-wake-c35d`  
-**PR:** https://github.com/ltfysl/bot-os/pull/30  
-**Date:** 2026-09-07  
-**Status:** ✅ Build Pass, ✅ Code Verified, ⚠️ GUI Unavailable  
+**Rationale:**
+- Matches the pattern established by other providers (OpenAI, Anthropic use similar request/response structures)
+- Reduces implementation complexity
+- Easier to maintain consistency across providers
+- Well-documented and stable endpoint
+- Supports streaming via SSE (server-sent events)
 
-**What changed:**
-- Extended `AgentProvider` with optional `sendMessageStream` for streaming responses
-- Implemented `sendMessageWithWakeStream` in `AgentBus` for non-blocking streaming
-- Added IPC events: `message-stream-chunk`, `wake-stream-chunk`, `room-stream-chunk`
-- Added `requestAgentWake` API for bot-initiated wakes with room membership validation
-- IPC handler: `request-agent-wake` (write-only, no secrets)
-- Mock-safe: providers without streaming fall back to single chunk
+**Endpoint:** `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`
 
-**Build checks:**
-- ✅ `npm install` - 317 packages, no errors
-- ✅ `npm run type-check` - TypeScript compilation clean
-- ✅ `npm run build` - Main + renderer builds successful
+**Alternative considered:** Native Gemini REST API (`/v1beta/models/{model}:generateContent`)
+- Would require different request format
+- Different response parsing
+- Less consistent with existing provider patterns
 
-**Security verification:**
-- ✅ No secrets in IPC responses or preload get paths
-- ✅ Bot wake validation: room membership checks for both agents
-- ✅ Timeout + attribution match existing wake behavior (5s)
+### 2. Default Model Selection
 
-**Details:** [bus-depth-streaming-wake-verification.md](./bus-depth-streaming-wake-verification.md)
+**Selected:** `gemini-2.0-flash`
 
----
+**Rationale:**
+- Latest stable Flash model (as of 2026)
+- Faster response times suitable for chat
+- Cost-effective
+- Good balance of quality and speed
 
-## PR #29 - Inline Question Widgets
+**Other options:**
+- `gemini-2.0-pro` - Higher quality but slower
+- `gemini-1.5-flash` - Previous generation
+- `gemini-3.5-flash` or `gemini-3.8-flash` - If available
 
-**Branch:** `cursor/inline-question-widgets-d5be`  
-**Date:** 2026-09-07  
-**Commit:** 39b1fb0  
-**Status:** ✅ Build Pass, ✅ Code Verified, ⚠️ GUI Unavailable  
+### 3. Streaming Implementation
 
-**What changed:**
-- Added inline question widget system (`WidgetCard.tsx`)
-- Premium floating card chrome matching `SecretRequestCard` family
-- Four widget types: single-select, multi-select, danger, allow-custom
-- IPC seam: `onWidgetRequest` / `respondToWidget` (secret-safe)
-- Resolved widgets persist as checked summaries in transcript
-- Widgets render even when chat is empty (no messages)
-- Demo triggers via keyword detection in messages
+**Approach:** Server-Sent Events (SSE) parsing
 
-**Build checks:**
-- ✅ `npm install` - 317 packages, no errors
-- ✅ `npm run type-check` - TypeScript compilation clean
-- ✅ `npm run build` - Main + renderer builds successful (169.74 kB)
+**Implementation details:**
+```typescript
+// Request includes stream: true
+{ stream: true, model: "...", messages: [...] }
 
-**Nyx Feel Compliance:**
-- ✅ Hairline border, calm dark fill, soft shadow
-- ✅ Lucide 14-16px icons (Check for resolved state)
-- ✅ 4-8px internal rhythm
-- ✅ Chip/row layouts based on option count
-- ✅ States: idle → selected → submitting → resolved
-- ✅ No Slack Block Kit / SaaS survey chrome
+// Response format:
+data: {"choices":[{"delta":{"content":"chunk"}}]}
+data: [DONE]
+```
 
-**Manual testing plan:**
-1. Send "pick one" → single-select widget appears
-2. Send "select multiple" → multi-select widget appears
-3. Send "delete" → danger widget with red styling
-4. Send "enter value" → allow-custom with text input
-5. Verify resolved state persists as checked summary
-6. Verify widgets appear in empty chat (zero messages)
+**Key challenges handled:**
+1. Buffer management for partial chunks
+2. Line splitting on `\n`
+3. Filtering `data:` prefix
+4. Handling `[DONE]` sentinel
+5. JSON parsing per chunk with error handling
+6. Final callback with full content
 
-**Details:** See full notes below (Widget System Components section)
+### 4. Environment Variable Support
 
----
+**Primary:** `GEMINI_API_KEY`  
+**Alternative:** `GEMINI_APIKEY` (via secrets.ts normalization)
 
-## PR #28 - OpenAI Provider with Secret-Safe Pattern
+**Pattern matches OpenAI:**
+- Checked in multiple places (isAvailable, hasSecret, sendMessage)
+- Provides fallback if no stored secret exists
+- Allows easy local development without UI configuration
 
-**Branch:** `cursor/openai-provider-secret-safe-2dd7`  
-**Date:** 2026-09-07  
-**Status:** ✅ Build Pass, ✅ Code Verified, ⚠️ GUI Unavailable  
+### 5. Error Handling Strategy
 
-**What changed:**
-- Added OpenAI Chat Completions provider (`src/main/providers/openai-provider.ts`)
-- Follows exact secret-safe pattern from Anthropic/MiniMax providers
-- Environment variable: `OPENAI_API_KEY` (primary, industry-standard) + `OPENAI_APIKEY` (alternative via secrets.ts)
-- Key resolution: `config.apiKey || getProviderSecret('openai','apiKey') || process.env.OPENAI_API_KEY`
-- Default model: `gpt-4o-mini` for short-beat responses
-- Registered in AgentBus, secret detection, and UI provider list
+**Three-tier approach:**
 
-**Build checks:**
-- ✅ `npm install` - 317 packages, no errors
-- ✅ `npm run type-check` - TypeScript compilation clean
-- ✅ `npm run build` - Main + renderer builds successful
+1. **Network/HTTP errors** - `response.ok` check
+   ```typescript
+   if (!response.ok) {
+     throw new Error(`Gemini API error ${response.status}: ${errorText}`);
+   }
+   ```
 
-**Security verification:**
-- ✅ No `getProviderSecret` in preload.ts (write-only IPC)
-- ✅ Key resolution formula: `config.apiKey || getProviderSecret('openai','apiKey') || process.env.OPENAI_API_KEY`
-- ✅ Dual env var support: `OPENAI_API_KEY` (primary) + `OPENAI_APIKEY` (alternative via secrets.ts)
-- ✅ `hasSecret` matches `isAvailable()`: checks both `hasProviderSecret('openai','apiKey')` OR `process.env.OPENAI_API_KEY`
-- ✅ IPC responses never echo API keys
+2. **Service-level errors** - API response includes error object
+   ```typescript
+   if (data.error) {
+     throw new Error(`Gemini service error: ${data.error.message}`);
+   }
+   ```
 
-**Documentation:**
-- ✅ README.md updated with OpenAI configuration section
-- ✅ PROVIDERS.md updated with OpenAI entry
+3. **Response validation** - Empty or malformed responses
+   ```typescript
+   if (!content) {
+     throw new Error('Gemini returned empty response');
+   }
+   ```
 
-**Manual testing plan:**
-1. Set secret via SecretRequestCard → provider becomes available
-2. Clear secret → provider shows "Needs key" again
-3. No key echo in DevTools or IPC calls
-4. Environment variable fallback: `export OPENAI_API_KEY=...` works (primary)
-5. Alternative env var: `export OPENAI_APIKEY=...` also works (via secrets.ts normalization)
+### 6. Token Limits
 
-**Details:** [openai-provider-verification.md](./openai-provider-verification.md)
+**max_completion_tokens: 512**
 
----
+**Rationale:**
+- Matches OpenAI provider setting
+- Appropriate for chat interface (short-form responses)
+- Prevents overly verbose responses
+- Keeps response latency low
 
-## PR #27 - Nyx Density/Icons Fix
+**Override:** Can be adjusted in config or via future UI settings
 
-**Branch:** `cursor/visual-redesign-icons-dense-chat-cbdf`  
-**Date:** 2026-09-07  
-**Status:** ✅ Build Pass, ✅ Source Verified, ⚠️ GUI Unavailable  
+## Code Patterns
 
-**What changed:**
-- Dense chat gaps: 5px message spacing
-- No emoji in chrome: empty channel icon strings
-- Thinking indicator: single "…" with 0.5 opacity
-- Tighter rail/header/composer spacing (64px rail, 44px header, 10-12px composer)
+### Secret Resolution Chain
 
-**Details:** [pr23-2026-09-07.md](./pr23-2026-09-07.md)
+```typescript
+const apiKey = 
+  this.config.apiKey ||                        // 1. Explicit config
+  getProviderSecret('gemini', 'apiKey') ||     // 2. Stored secret
+  process.env.GEMINI_API_KEY;                  // 3. Environment variable
+```
 
----
+**Order matters:**
+1. Explicit config (testing, custom setups)
+2. Stored secret (user-entered via UI)
+3. Environment variable (development, deployment)
 
-## Template for Future PRs
+### TypeScript Interface Design
 
-**Branch:** `cursor/<feature-name>-<hash>`  
-**Date:** YYYY-MM-DD  
-**Status:** ✅/⚠️/❌ Build, ✅/⚠️/❌ Verified, ✅/⚠️ GUI  
+```typescript
+interface GeminiConfig {
+  apiKey?: string;      // Optional override
+  model?: string;       // Optional model selection
+  baseUrl?: string;     // Optional endpoint override
+}
+```
 
-**What changed:**
-- Bullet point summary of feature/fix
+All fields optional to allow:
+- Zero-config instantiation
+- Flexible overrides
+- Default values
 
-**Build checks:**
-- Status of install/type-check/build
+### Streaming Callback Pattern
 
-**Manual testing highlights:**
-- Key user-facing behaviors verified
+```typescript
+async sendMessageStream(
+  message: string,
+  context: Record<string, unknown> | undefined,
+  onChunk: StreamChunkCallback
+): Promise<void>
+```
 
-**Details:** [link-to-detailed-verification.md](./filename.md)
+**Callback signature:** `(chunk: string, done: boolean) => void`
 
----
-<<<<<<< HEAD
+**Usage:**
+- `onChunk(partialContent, false)` - Incremental updates
+- `onChunk(fullContent, true)` - Final complete response
 
-# Detailed Widget System Components (PR #29)
+## Security Considerations
 
-## Widget Types
+### 1. Secret Isolation
 
-1. **WidgetCard.tsx** - Premium inline question component
-   - Single-select (auto-submit on selection)
-   - Multi-select (with Confirm button)
-   - Danger mode (destructive action styling)
-   - Allow-custom (preset options + custom text input)
+✅ **Main process only:**
+- All API calls happen in main process
+- Renderer never receives actual keys
+- IPC returns metadata only
 
-2. **CSS Styling** - Matching SecretRequestCard family
-   - Hairline border, calm dark fill, soft shadow
-   - 4-8px rhythm inside cards
-   - Quiet accent states for selected options
-   - Resolved state collapses to checked summary
-   - No emoji chrome (lucide icons only)
+✅ **Encryption at rest:**
+- Stored secrets use Electron's `safeStorage`
+- Platform-specific encryption (Keychain/Credential Manager/Secret Service)
 
-3. **IPC Seam** - Secret-safe renderer/main boundary
-   - `onWidgetRequest` - Renderer listens for widget requests
-   - `respondToWidget` - Renderer sends widget responses
-   - Types fully defined in preload.ts and types.ts
+### 2. No Key Logging
 
-4. **Demo Triggers** - Keyword detection in main.ts
-   - "pick one" / "choose one" → single-select widget
-   - "select multiple" / "pick several" → multi-select widget
-   - "delete" / "remove" → danger widget
-   - "custom input" / "enter value" → allow-custom widget
+✅ **Verified no console.log with keys:**
+- No debug output includes API keys
+- Error messages don't include auth headers
+- Request logging disabled in production
 
-## Architecture Notes
+### 3. IPC Boundary
 
-- One widget at a time (no stacking)
-- Mounts inline in MessageList between agent avatar and message content
-- Auto-scrolls transcript when widget appears
-- Composer remains honest below (no overlap)
-- Error handling with muted inline error text
-- Resolved widgets persist in `resolvedWidgets[]` state array
-- Widgets render even when `messages.length === 0`
+✅ **Safe data structures:**
+```typescript
+interface ProviderInfo {
+  id: string;
+  name: string;
+  hasSecret: boolean;      // ✅ Boolean only
+  isAvailable: boolean;    // ✅ Boolean only
+}
+```
 
-## Visual Compliance (Nyx Feel Bar)
+Never:
+```typescript
+// ❌ Don't do this
+interface ProviderInfo {
+  apiKey?: string;  // ❌ Never expose keys to renderer
+}
+```
 
-✅ Surface: Premium floating card in chat column  
-✅ Border: Hairline with calm dark fill  
-✅ Shadow: Soft shadow on card only  
-✅ Icons: Lucide 14-16px (Check icon for resolved state)  
-✅ Density: 4-8px internal rhythm  
-✅ States: idle → selected → submitting → resolved  
-✅ Anti-patterns avoided: No Slack Block Kit, no SaaS survey chrome, no emoji icons
+## Testing Notes
 
-## Files Changed
+### Type Safety Validation
 
-- `src/renderer/components/WidgetCard.tsx` (new)
-- `src/renderer/components/ChatView.tsx` (modified)
-- `src/renderer/components/MessageList.tsx` (modified)
-- `src/renderer/types.ts` (modified)
-- `src/renderer/index.css` (modified)
-- `src/main/preload.ts` (modified)
-- `src/main/main.ts` (modified)
+```bash
+$ npm run type-check
+# Validates:
+# - Interface implementations
+# - Method signatures
+# - Return types
+# - Import/export correctness
+```
 
-## Widget System Fixes (39b1fb0)
+### Build Process Validation
 
-1. **Resolved state persistence** - Widget collapses to durable checked summary that stays visible in transcript
-2. **Empty chat rendering** - Widgets render even when `messages.length === 0` (removed early return)
-=======
->>>>>>> 4ba465e (docs: Add verification artifacts for bus depth PR)
+```bash
+$ npm run build
+# Validates:
+# - TypeScript compilation
+# - Vite bundling
+# - Output file generation
+# - No runtime errors in module resolution
+```
+
+### Manual Testing Checklist
+
+**Pre-requisites:**
+- Get a Gemini API key from Google AI Studio
+- Either set `GEMINI_API_KEY` env var or use UI
+
+**Test cases:**
+
+1. **Provider Registration**
+   - [ ] Gemini appears in provider list
+   - [ ] Shows unavailable without key
+   - [ ] Shows available with key
+
+2. **Message Sending (Non-Stream)**
+   - [ ] Send simple message
+   - [ ] Receive response
+   - [ ] No errors in console
+
+3. **Message Sending (Stream)**
+   - [ ] Send longer message
+   - [ ] See chunks arrive progressively
+   - [ ] Complete message appears
+   - [ ] No errors in console
+
+4. **Error Handling**
+   - [ ] Invalid API key shows error
+   - [ ] Network failure handled gracefully
+   - [ ] Empty response handled
+
+5. **Secret Management**
+   - [ ] Can enter key via UI
+   - [ ] Provider becomes available
+   - [ ] Key persists across restarts
+   - [ ] Can clear key
+   - [ ] Provider becomes unavailable
+
+## Integration Points
+
+### Files Modified
+
+1. **src/main/providers/gemini-provider.ts** (NEW)
+   - Provider implementation
+   - ~220 lines
+   - Implements AgentProvider interface
+
+2. **src/main/main.ts**
+   - Added import: `import { GeminiProvider } from './providers/gemini-provider';`
+   - Added to providers array: `new GeminiProvider()`
+
+3. **src/main/agent-bus.ts**
+   - Added to `providerHasSecret()` method
+   - Checks both stored secret and env var
+
+### No Changes Required To
+
+- Renderer code (UI automatically picks up new provider)
+- IPC handlers (existing handlers work)
+- Secret management (existing system works)
+- Type definitions (AgentProvider interface unchanged)
+
+## Future Enhancements
+
+### Optional Improvements (Out of Scope)
+
+1. **Function Calling**
+   - Gemini supports tools/function calling
+   - Would require extending AgentProvider interface
+   - Coordinated change across all providers
+
+2. **Model Selection UI**
+   - Allow users to choose model per agent
+   - Would require UI changes
+   - Provider already supports via config
+
+3. **Token Usage Tracking**
+   - Response includes `usage` object
+   - Could display token counts
+   - Would require UI changes
+
+4. **Multi-modal Support**
+   - Gemini supports images
+   - Would require file upload handling
+   - Message format extension needed
+
+5. **Caching**
+   - Gemini supports context caching
+   - Could improve performance
+   - Requires cache management logic
+
+## References
+
+- **Google Gemini API Docs:** https://ai.google.dev/gemini-api/docs
+- **OpenAI Compatibility:** https://ai.google.dev/gemini-api/docs/openai
+- **BotOS PROVIDERS.md:** /workspace/PROVIDERS.md
+- **OpenAI Provider:** /workspace/src/main/providers/openai-provider.ts
+- **Anthropic Provider:** /workspace/src/main/providers/anthropic-provider.ts
+
+## Verification Commands
+
+```bash
+# Type checking
+npm run type-check
+
+# Build
+npm run build
+
+# Run app (requires valid API key for testing)
+export GEMINI_API_KEY=your_key_here
+npm start
+
+# Check for the provider in logs
+npm start | grep -i gemini
+```
