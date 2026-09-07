@@ -30,7 +30,9 @@ export default function MessageComposer({
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      if (!isStreaming) {
+        handleSend();
+      }
     }
   };
 
@@ -66,7 +68,7 @@ export default function MessageComposer({
           value={message}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
-          disabled={disabled}
+          disabled={disabled || isStreaming}
           rows={1}
         />
         <div className="compose-actions">

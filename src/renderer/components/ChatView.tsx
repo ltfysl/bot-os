@@ -100,6 +100,18 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
               };
               setMessages((msgs) => [...msgs, finalMessage]);
               return null;
+            } else if (!prev && chunk.chunk) {
+              const finalMessage: Message = {
+                id: chunk.id,
+                content: chunk.chunk,
+                role: 'assistant',
+                timestamp: Date.now(),
+                agentId: chunk.agentId,
+                agentName: chunk.agentName,
+                agentAvatar: chunk.agentAvatar,
+              };
+              setMessages((msgs) => [...msgs, finalMessage]);
+              return null;
             }
             return prev;
           });

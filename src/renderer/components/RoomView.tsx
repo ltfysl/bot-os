@@ -87,6 +87,19 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
               };
               setMessages((msgs) => [...msgs, finalMessage]);
               return null;
+            } else if (!prev && chunk.chunk) {
+              const finalMessage: RoomMessage = {
+                id: chunk.id,
+                roomId: chunk.roomId,
+                content: chunk.chunk,
+                role: 'assistant',
+                timestamp: Date.now(),
+                agentId: chunk.agentId,
+                agentName: chunk.agentName,
+                agentAvatar: chunk.agentAvatar,
+              };
+              setMessages((msgs) => [...msgs, finalMessage]);
+              return null;
             }
             return prev;
           });
