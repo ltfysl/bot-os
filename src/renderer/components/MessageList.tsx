@@ -56,10 +56,16 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
   }
 
   const lastAssistantMessage = messages.filter((m) => m.role === 'assistant').at(-1);
+  const hasAssistantMessage = lastAssistantMessage !== undefined;
+  const useNeutralChrome = !hasAssistantMessage && !agentName && !agentAvatar;
 
-  const renderAvatar = (role: 'user' | 'assistant', avatarText?: string) => {
+  const renderAvatar = (role: 'user' | 'assistant', avatarText?: string, forceNeutral = false) => {
     if (role === 'user') {
       return <User size={16} strokeWidth={2} />;
+    }
+    
+    if (forceNeutral) {
+      return <span className="agent-initials" style={{ opacity: 0.5 }}>…</span>;
     }
     
     if (avatarText && avatarText.length <= 3 && /^[A-Z]{1,3}$/.test(avatarText)) {
@@ -102,24 +108,16 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
       {isLoading && (
         <div className="message assistant">
           <div className="message-avatar">
-<<<<<<< HEAD
-            {renderAvatar('assistant', lastAssistantMessage?.agentAvatar || agentAvatar)}
-=======
             {useNeutralChrome ? (
-              <span style={{ opacity: 0.5 }}>…</span>
+              renderAvatar('assistant', undefined, true)
             ) : (
               renderAvatar('assistant', lastAssistantMessage?.agentAvatar || agentAvatar)
             )}
->>>>>>> 325cccb (Fix neutral chrome regression and tighten empty states)
           </div>
           <div className="message-content">
             <div className="message-header">
               <span className="message-author">
-<<<<<<< HEAD
-                {lastAssistantMessage?.agentName || agentName || 'Assistant'}
-=======
                 {useNeutralChrome ? '…' : (lastAssistantMessage?.agentName || agentName || 'Assistant')}
->>>>>>> 325cccb (Fix neutral chrome regression and tighten empty states)
               </span>
             </div>
             <div className="message-text" style={{ opacity: 0.5 }}>
