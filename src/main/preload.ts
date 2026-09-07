@@ -135,6 +135,41 @@ export interface WidgetResponse {
   dismissed: boolean;
 }
 
+export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-found' | 'provider-not-found' | 'provider-unavailable' | 'general-error';
+
+export interface WakeFailureEvent {
+  roomId?: string;
+  initiatorAgentId?: string;
+  targetAgentId: string;
+  reason: WakeFailureReason;
+  errorMessage: string;
+  timestamp: number;
+}
+
+export interface WakeTimeoutEvent {
+  roomId?: string;
+  initiatorAgentId?: string;
+  targetAgentId: string;
+  timeoutMs: number;
+  timestamp: number;
+}
+
+export interface WakeMembershipDeniedEvent {
+  roomId: string;
+  initiatorAgentId: string;
+  targetAgentId: string;
+  denialReason: 'initiator-not-member' | 'target-not-member';
+  timestamp: number;
+}
+
+export interface WakeBackpressureEvent {
+  targetAgentId: string;
+  queuePosition: number;
+  queueLength: number;
+  activeWakes: number;
+  timestamp: number;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   sendMessage: (agentId: string, message: string): Promise<Message> =>
     ipcRenderer.invoke('send-message', agentId, message),
@@ -218,4 +253,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   respondToWidget: (response: WidgetResponse): Promise<void> =>
     ipcRenderer.invoke('respond-to-widget', response),
+  onWakeFailure: (callback: (event: WakeFailureEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeFailureEvent) => callback(wakeEvent);
+    ipcRenderer.on('wake-failure', handler);
+    return () => ipcRenderer.removeListener('wake-failure', handler);
+  },
+  onWakeTimeout: (callback: (event: WakeTimeoutEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeTimeoutEvent) => callback(wakeEvent);
+    ipcRenderer.on('wake-timeout', handler);
+    return () => ipcRenderer.removeListener('wake-timeout', handler);
+  },
+  onWakeMembershipDenied: (callback: (event: WakeMembershipDeniedEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeMembershipDeniedEvent) => callback(wakeEvent);
+    ipcRenderer.on('wake-membership-denied', handler);
+    return () => ipcRenderer.removeListener('wake-membership-denied', handler);
+  },
+  onWakeBackpressure: (callback: (event: WakeBackpressureEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeBackpressureEvent) => callback(wakeEvent);
+    ipcRenderer.on('wake-backpressure', handler);
+    return () => ipcRenderer.removeListener('wake-backpressure', handler);
+  },
 });

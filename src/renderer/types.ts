@@ -30,6 +30,41 @@ export interface WakeResult {
   error?: string;
 }
 
+export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-found' | 'provider-not-found' | 'provider-unavailable' | 'general-error';
+
+export interface WakeFailureEvent {
+  roomId?: string;
+  initiatorAgentId?: string;
+  targetAgentId: string;
+  reason: WakeFailureReason;
+  errorMessage: string;
+  timestamp: number;
+}
+
+export interface WakeTimeoutEvent {
+  roomId?: string;
+  initiatorAgentId?: string;
+  targetAgentId: string;
+  timeoutMs: number;
+  timestamp: number;
+}
+
+export interface WakeMembershipDeniedEvent {
+  roomId: string;
+  initiatorAgentId: string;
+  targetAgentId: string;
+  denialReason: 'initiator-not-member' | 'target-not-member';
+  timestamp: number;
+}
+
+export interface WakeBackpressureEvent {
+  targetAgentId: string;
+  queuePosition: number;
+  queueLength: number;
+  activeWakes: number;
+  timestamp: number;
+}
+
 export interface Channel {
   id: string;
   name: string;
@@ -171,6 +206,10 @@ declare global {
       onRoomFanInResponse: (callback: (message: RoomMessage) => void) => (() => void);
       onWidgetRequest: (callback: (request: WidgetRequest) => void) => (() => void);
       respondToWidget: (response: WidgetResponse) => Promise<void>;
+      onWakeFailure: (callback: (event: WakeFailureEvent) => void) => (() => void);
+      onWakeTimeout: (callback: (event: WakeTimeoutEvent) => void) => (() => void);
+      onWakeMembershipDenied: (callback: (event: WakeMembershipDeniedEvent) => void) => (() => void);
+      onWakeBackpressure: (callback: (event: WakeBackpressureEvent) => void) => (() => void);
     };
   }
 }
