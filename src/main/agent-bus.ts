@@ -412,6 +412,10 @@ export class AgentBus {
       return hasProviderSecret('gemini', 'apiKey') || Boolean(process.env.GEMINI_API_KEY);
     }
     
+    if (providerId === 'xai') {
+      return hasProviderSecret('xai', 'apiKey') || Boolean(process.env.XAI_API_KEY);
+    }
+    
     return false;
   }
 }

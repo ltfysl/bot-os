@@ -8,6 +8,7 @@ import { CodingPlanProvider } from './providers/coding-plan-provider';
 import { AnthropicProvider } from './providers/anthropic-provider';
 import { OpenAIProvider } from './providers/openai-provider';
 import { GeminiProvider } from './providers/gemini-provider';
+import { XAIProvider } from './providers/xai-provider';
 import { RoutineManager, Routine, RoutineCreateInput, RoutineUpdateInput } from './routines';
 import { setProviderSecret, clearProviderSecret, loadPersistedSecrets } from './secrets';
 import { RoomManager, Room } from './rooms';
@@ -62,6 +63,7 @@ app.whenReady().then(async () => {
       new AnthropicProvider(),
       new OpenAIProvider(),
       new GeminiProvider(),
+      new XAIProvider(),
     ],
     defaultProviderId: 'mock-intelligent',
   });
