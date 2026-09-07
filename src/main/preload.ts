@@ -199,6 +199,32 @@ export interface WakeBackpressureEvent {
   timestamp: number;
 }
 
+export type WakeOrder = 'sequential' | 'priority';
+
+export interface TargetedWakeTarget {
+  agentId: string;
+  priority?: number;
+}
+
+export interface TargetedWakeRequest {
+  roomId: string;
+  initiatorAgentId: string;
+  targets: TargetedWakeTarget[];
+  message: string;
+  order: WakeOrder;
+}
+
+export interface WakeCompletionEvent {
+  roomId: string;
+  initiatorAgentId: string;
+  targetAgentId: string;
+  success: boolean;
+  reason?: WakeFailureReason;
+  errorMessage?: string;
+  timestamp: number;
+  orderIndex?: number;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   sendMessage: (agentId: string, message: string): Promise<Message> =>
     ipcRenderer.invoke('send-message', agentId, message),
@@ -302,6 +328,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('wake-backpressure', handler);
     return () => ipcRenderer.removeListener('wake-backpressure', handler);
   },
+  onWakeCompletion: (callback: (event: WakeCompletionEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeCompletionEvent) => callback(wakeEvent);
+    ipcRenderer.on('wake-completion', handler);
+    return () => ipcRenderer.removeListener('wake-completion', handler);
+  },
+  requestTargetedRoomWake: (request: TargetedWakeRequest): Promise<void> =>
+    ipcRenderer.invoke('request-targeted-room-wake', request),
   getOrCreateDm: (agentId1: string, agentId2: string): Promise<DirectMessage> =>
     ipcRenderer.invoke('get-or-create-dm', agentId1, agentId2),
   getDm: (agentId1: string, agentId2: string): Promise<DirectMessage | undefined> =>
