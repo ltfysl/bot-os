@@ -51,6 +51,14 @@ export interface WakeMembershipDeniedEvent {
   denialReason: 'initiator-not-member' | 'target-not-member';
   timestamp: number;
 }
+
+export interface WakeBackpressureEvent {
+  targetAgentId: string;
+  queuePosition: number;
+  queueLength: number;
+  activeWakes: number;
+  timestamp: number;
+}
 ```
 
 **IPC Events (preload.ts):**
@@ -58,6 +66,7 @@ export interface WakeMembershipDeniedEvent {
 - `wake-failure`: General wake failures (agent not found, provider unavailable, etc.)
 - `wake-timeout`: Wake timeout events (5s timeout)
 - `wake-membership-denied`: Room membership validation failures
+- `wake-backpressure`: Wake queued due to concurrency limit (Waiting...)
 
 **Exposed via preload:**
 
@@ -65,6 +74,7 @@ export interface WakeMembershipDeniedEvent {
 onWakeFailure: (callback: (event: WakeFailureEvent) => void) => (() => void)
 onWakeTimeout: (callback: (event: WakeTimeoutEvent) => void) => (() => void)
 onWakeMembershipDenied: (callback: (event: WakeMembershipDeniedEvent) => void) => (() => void)
+onWakeBackpressure: (callback: (event: WakeBackpressureEvent) => void) => (() => void)
 ```
 
 ### 2. AgentBus Event Emission ✅ IMPLEMENTED
@@ -85,7 +95,7 @@ export interface AgentBusConfig {
 
 ```typescript
 export type WakeEventCallback = (
-  event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent
+  event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent
 ) => void;
 ```
 
@@ -105,6 +115,11 @@ export type WakeEventCallback = (
    - Provider not found
    - Provider unavailable
    - General errors with proper reason classification
+
+4. **Backpressure Events:**
+   - `enqueueWake()` - When wake is queued due to concurrency limit
+   - Includes queue position, queue length, and active wakes count
+   - Chrome can show "Waiting..." indicator
 
 **Context Included (Secret-Safe):**
 
@@ -332,6 +347,27 @@ agentBus = new AgentBus({
      timestamp: 1725717000000
    }
    ```
+
+### Wake Backpressure Scenario (Waiting...)
+
+**Input:**
+- 15 concurrent wake requests (concurrent limit: 10)
+- Requests 11-15 queued
+
+**Expected Output:**
+1. First 10 execute immediately
+2. For requests 11-15, IPC event: `wake-backpressure`
+   ```typescript
+   {
+     targetAgentId: "3",
+     queuePosition: 1,
+     queueLength: 5,
+     activeWakes: 10,
+     timestamp: 1725717000000
+   }
+   ```
+3. Chrome can show "Waiting... (position 1 of 5)" indicator
+4. Queue auto-processes as wakes complete
 
 ---
 
@@ -648,6 +684,17 @@ type WakeFailureReason =
 }
 ```
 
+**WakeBackpressureEvent:**
+```typescript
+{
+  targetAgentId: string;     // Wake target being queued
+  queuePosition: number;     // Position in queue (1-indexed)
+  queueLength: number;       // Total queue size
+  activeWakes: number;       // Currently executing wakes
+  timestamp: number;         // Milliseconds since epoch
+}
+```
+
 ### AgentBus Methods
 
 **enqueueWake (private):**
@@ -676,7 +723,7 @@ getWakeQueueStats(): {
 **emitWakeEvent (private):**
 ```typescript
 private emitWakeEvent(
-  event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent
+  event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent
 ): void
 ```
 
