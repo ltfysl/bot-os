@@ -11,11 +11,13 @@ import { GeminiProvider } from './providers/gemini-provider';
 import { RoutineManager, Routine, RoutineCreateInput, RoutineUpdateInput } from './routines';
 import { setProviderSecret, clearProviderSecret, loadPersistedSecrets } from './secrets';
 import { RoomManager, Room } from './rooms';
+import { DmManager } from './dms';
 
 let mainWindow: BrowserWindow | null = null;
 let agentBus: AgentBus;
 let routineManager: RoutineManager;
 let roomManager: RoomManager;
+let dmManager: DmManager;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -72,6 +74,7 @@ app.whenReady().then(async () => {
       if ('reason' in event && event.reason === 'timeout') {
         mainWindow.webContents.send('wake-timeout', {
           roomId: event.roomId,
+          dmId: event.dmId,
           initiatorAgentId: event.initiatorAgentId,
           targetAgentId: event.targetAgentId,
           timeoutMs: 5000,
@@ -88,6 +91,7 @@ app.whenReady().then(async () => {
       } else if ('reason' in event) {
         mainWindow.webContents.send('wake-failure', {
           roomId: event.roomId,
+          dmId: event.dmId,
           initiatorAgentId: event.initiatorAgentId,
           targetAgentId: event.targetAgentId,
           reason: event.reason,
@@ -149,6 +153,8 @@ app.whenReady().then(async () => {
   if (existingRooms.length === 0) {
     roomManager.createRoom('Team Chat', ['1', '2', '3']);
   }
+
+  dmManager = new DmManager();
 
   createWindow();
 
@@ -644,9 +650,9 @@ ipcMain.handle('clear-room-unread', async (_event, roomId: string) => {
   return { success: true };
 });
 
-ipcMain.handle('request-agent-wake', async (_event, initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string) => {
+ipcMain.handle('request-agent-wake', async (_event, initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string, dmId?: string) => {
   try {
-    await agentBus.requestAgentWake(initiatorAgentId, targetAgentId, message, roomId);
+    await agentBus.requestAgentWake(initiatorAgentId, targetAgentId, message, roomId, dmId);
     return { success: true };
   } catch (error) {
     return { 
@@ -674,4 +680,194 @@ function extractRoomMentions(message: string, memberAgentIds: string[]): string[
 ipcMain.handle('respond-to-widget', async (_event, response) => {
   console.log('Widget response received:', response);
   return;
+});
+
+ipcMain.handle('get-or-create-dm', async (_event, agentId1: string, agentId2: string) => {
+  return dmManager.getOrCreateDm(agentId1, agentId2);
+});
+
+ipcMain.handle('get-dm', async (_event, agentId1: string, agentId2: string) => {
+  return dmManager.getDm(agentId1, agentId2);
+});
+
+ipcMain.handle('list-dms-for-agent', async (_event, agentId: string) => {
+  return dmManager.listDmsForAgent(agentId);
+});
+
+ipcMain.handle('get-dm-messages', async (_event, dmId: string) => {
+  return dmManager.getDmMessages(dmId);
+});
+
+ipcMain.handle('send-dm-message', async (event, dmId: string, content: string, senderId: string, shouldWake?: boolean) => {
+  const dm = dmManager.getDm(senderId, dmManager.getOtherParticipant(dmId, senderId) || '');
+  if (!dm) {
+    throw new Error(`DM not found: ${dmId}`);
+  }
+
+  if (!dm.participants.includes(senderId)) {
+    throw new Error(`Agent ${senderId} is not a participant in DM ${dmId}`);
+  }
+
+  const sender = agentBus.getAgent(senderId);
+  if (!sender) {
+    throw new Error(`Sender agent not found: ${senderId}`);
+  }
+
+  const userMessage = {
+    id: `${Date.now()}-user`,
+    dmId,
+    content,
+    role: 'user' as const,
+    timestamp: Date.now(),
+    senderId,
+    senderName: sender.name,
+    senderAvatar: sender.avatar,
+  };
+
+  dmManager.addDmMessage(userMessage);
+
+  if (shouldWake) {
+    const targetAgentId = dmManager.getOtherParticipant(dmId, senderId);
+    if (targetAgentId) {
+      const target = agentBus.getAgent(targetAgentId);
+      if (target) {
+        agentBus.requestAgentWake(senderId, targetAgentId, content, undefined, dmId)
+          .then(async () => {
+            const response = await agentBus.sendMessage(content, targetAgentId, { dm: dmId });
+            const assistantMessage = {
+              id: response.id,
+              dmId,
+              content: response.content,
+              role: 'assistant' as const,
+              timestamp: response.timestamp,
+              senderId: targetAgentId,
+              senderName: target.name,
+              senderAvatar: target.avatar,
+            };
+            dmManager.addDmMessage(assistantMessage);
+            event.sender.send('dm-wake-response', assistantMessage);
+          })
+          .catch((err) => {
+            console.error(`Failed to wake agent ${targetAgentId} in DM ${dmId}:`, err);
+          });
+      }
+    }
+  }
+
+  return userMessage;
+});
+
+ipcMain.handle('send-dm-message-stream', async (event, dmId: string, content: string, senderId: string, shouldWake?: boolean) => {
+  const dm = dmManager.getDm(senderId, dmManager.getOtherParticipant(dmId, senderId) || '');
+  if (!dm) {
+    throw new Error(`DM not found: ${dmId}`);
+  }
+
+  if (!dm.participants.includes(senderId)) {
+    throw new Error(`Agent ${senderId} is not a participant in DM ${dmId}`);
+  }
+
+  const sender = agentBus.getAgent(senderId);
+  if (!sender) {
+    throw new Error(`Sender agent not found: ${senderId}`);
+  }
+
+  const userMessage = {
+    id: `${Date.now()}-user`,
+    dmId,
+    content,
+    role: 'user' as const,
+    timestamp: Date.now(),
+    senderId,
+    senderName: sender.name,
+    senderAvatar: sender.avatar,
+  };
+
+  dmManager.addDmMessage(userMessage);
+
+  if (shouldWake) {
+    const targetAgentId = dmManager.getOtherParticipant(dmId, senderId);
+    if (targetAgentId) {
+      const target = agentBus.getAgent(targetAgentId);
+      if (target) {
+        const messageId = `${Date.now()}-${targetAgentId}`;
+        let accumulatedContent = '';
+
+        agentBus.requestAgentWake(senderId, targetAgentId, content, undefined, dmId)
+          .then(async () => {
+            const provider = agentBus.getProvider(target.providerId);
+            if (!provider) {
+              throw new Error(`Provider not found for agent: ${target.providerId}`);
+            }
+
+            const isAvailable = await provider.isAvailable();
+            if (!isAvailable) {
+              throw new Error(`Provider not available: ${target.providerId}`);
+            }
+
+            if (provider.sendMessageStream) {
+              await provider.sendMessageStream(content, { dm: dmId }, (chunk, done) => {
+                if (!done) {
+                  accumulatedContent += chunk;
+                } else {
+                  accumulatedContent = chunk;
+                }
+
+                event.sender.send('dm-stream-chunk', {
+                  id: messageId,
+                  dmId,
+                  senderId: targetAgentId,
+                  senderName: target.name,
+                  senderAvatar: target.avatar,
+                  chunk,
+                  done,
+                });
+
+                if (done) {
+                  const assistantMessage = {
+                    id: messageId,
+                    dmId,
+                    content: accumulatedContent,
+                    role: 'assistant' as const,
+                    timestamp: Date.now(),
+                    senderId: targetAgentId,
+                    senderName: target.name,
+                    senderAvatar: target.avatar,
+                  };
+                  dmManager.addDmMessage(assistantMessage);
+                }
+              });
+            } else {
+              const response = await provider.sendMessage(content, { dm: dmId });
+              event.sender.send('dm-stream-chunk', {
+                id: messageId,
+                dmId,
+                senderId: targetAgentId,
+                senderName: target.name,
+                senderAvatar: target.avatar,
+                chunk: response,
+                done: true,
+              });
+
+              const assistantMessage = {
+                id: messageId,
+                dmId,
+                content: response,
+                role: 'assistant' as const,
+                timestamp: Date.now(),
+                senderId: targetAgentId,
+                senderName: target.name,
+                senderAvatar: target.avatar,
+              };
+              dmManager.addDmMessage(assistantMessage);
+            }
+          })
+          .catch((err) => {
+            console.error(`Failed to wake agent ${targetAgentId} in DM ${dmId}:`, err);
+          });
+      }
+    }
+  }
+
+  return userMessage;
 });
