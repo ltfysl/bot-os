@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { User, Bot, MessageSquare } from 'lucide-react';
 import type { Message } from '../types';
 
 interface MessageListProps {
@@ -47,7 +48,7 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
     return (
       <div className="chat-messages">
         <div className="empty-state">
-          <div className="empty-icon">💬</div>
+          <MessageSquare size={32} strokeWidth={1.5} className="empty-icon" />
           <div className="empty-title">No messages yet</div>
         </div>
       </div>
@@ -58,20 +59,35 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
   const hasAssistantMessage = lastAssistantMessage !== undefined;
   const useNeutralChrome = !hasAssistantMessage && !agentName && !agentAvatar;
 
+  const renderAvatar = (role: 'user' | 'assistant', avatarText?: string, forceNeutral = false) => {
+    if (role === 'user') {
+      return <User size={16} strokeWidth={2} />;
+    }
+    
+    if (forceNeutral) {
+      return <span className="agent-initials" style={{ opacity: 0.5 }}>…</span>;
+    }
+    
+    if (avatarText && avatarText.length <= 3 && /^[A-Z]{1,3}$/.test(avatarText)) {
+      return <span className="agent-initials">{avatarText}</span>;
+    }
+    
+    return <Bot size={16} strokeWidth={2} />;
+  };
+
   return (
     <div className="chat-messages">
       {messages.map((message) => {
         const displayName = message.role === 'user' 
           ? 'You' 
           : (message.agentName || 'Assistant');
-        const displayAvatar = message.role === 'user' 
-          ? '👤' 
-          : (message.agentAvatar || '🤖');
         const isError = message.content.startsWith('Failed to send message:');
 
         return (
           <div key={message.id} className={`message ${message.role}`}>
-            <div className="message-avatar">{displayAvatar}</div>
+            <div className="message-avatar">
+              {renderAvatar(message.role, message.agentAvatar)}
+            </div>
             <div className="message-content">
               <div className="message-header">
                 <span className="message-author">{displayName}</span>
@@ -92,7 +108,11 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
       {isLoading && (
         <div className="message assistant">
           <div className="message-avatar">
-            {useNeutralChrome ? '…' : (lastAssistantMessage?.agentAvatar || agentAvatar || '🤖')}
+            {useNeutralChrome ? (
+              renderAvatar('assistant', undefined, true)
+            ) : (
+              renderAvatar('assistant', lastAssistantMessage?.agentAvatar || agentAvatar)
+            )}
           </div>
           <div className="message-content">
             <div className="message-header">
@@ -101,7 +121,7 @@ export default function MessageList({ messages, isLoading, agentName, agentAvata
               </span>
             </div>
             <div className="message-text" style={{ opacity: 0.5 }}>
-              {useNeutralChrome ? '…' : 'Thinking...'}
+              …
             </div>
           </div>
         </div>

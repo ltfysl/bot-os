@@ -123,6 +123,13 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
   const displayedAvatars = memberAgents.slice(0, 4);
   const overflowCount = memberAgents.length - 4;
 
+  const renderMemberInitials = (avatar: string) => {
+    if (avatar && avatar.length <= 3 && /^[A-Z]{1,3}$/.test(avatar)) {
+      return avatar;
+    }
+    return avatar.length >= 2 ? avatar.substring(0, 2).toUpperCase() : 'AG';
+  };
+
   const lastAssistantMessage = messages.slice().reverse().find(m => m.role === 'assistant');
   
   const messagesAsGeneric: Message[] = messages.map(msg => ({
@@ -142,7 +149,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
         <div className="room-members">
           {displayedAvatars.map((agent) => (
             <div key={agent.id} className="room-member-avatar" title={agent.name}>
-              {agent.avatar}
+              <span className="member-initials">{renderMemberInitials(agent.avatar)}</span>
             </div>
           ))}
           {overflowCount > 0 && (

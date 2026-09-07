@@ -59,7 +59,7 @@ app.whenReady().then(() => {
     id: '1',
     name: 'Assistant',
     providerId: 'mock-intelligent',
-    avatar: '🤖',
+    avatar: 'AS',
     status: 'active',
     unread: 0,
   });
@@ -68,7 +68,7 @@ app.whenReady().then(() => {
     id: '2',
     name: 'Researcher',
     providerId: 'mock-echo',
-    avatar: '📚',
+    avatar: 'RE',
     status: 'idle',
     unread: 2,
   });
@@ -77,7 +77,7 @@ app.whenReady().then(() => {
     id: '3',
     name: 'Coder',
     providerId: 'mock-intelligent',
-    avatar: '💻',
+    avatar: 'CO',
     status: 'active',
     unread: 0,
   });
@@ -159,9 +159,9 @@ ipcMain.handle('send-message', async (event, agentId: string, message: string) =
 
 ipcMain.handle('get-channels', async () => {
   return [
-    { id: '1', name: 'General', icon: '💬' },
-    { id: '2', name: 'Development', icon: '🔧' },
-    { id: '3', name: 'Research', icon: '🔬' },
+    { id: '1', name: 'General', icon: '' },
+    { id: '2', name: 'Development', icon: '' },
+    { id: '3', name: 'Research', icon: '' },
   ];
 });
 
