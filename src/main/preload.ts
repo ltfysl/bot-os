@@ -19,6 +19,7 @@ export interface StreamChunk {
   chunk: string;
   done: boolean;
   targetAgentId?: string;
+  wakeId?: string;
 }
 
 export interface StreamResponse {
@@ -29,6 +30,7 @@ export interface StreamResponse {
 
 export interface WakeResult {
   success: boolean;
+  wakeId?: string;
   error?: string;
 }
 
@@ -112,6 +114,7 @@ export interface RoomStreamChunk {
   agentAvatar: string;
   chunk: string;
   done: boolean;
+  wakeId?: string;
 }
 
 export type WidgetType = 'single-select' | 'multi-select' | 'danger' | 'allow-custom';
@@ -135,7 +138,7 @@ export interface WidgetResponse {
   dismissed: boolean;
 }
 
-export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-found' | 'provider-not-found' | 'provider-unavailable' | 'general-error';
+export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-found' | 'provider-not-found' | 'provider-unavailable' | 'general-error' | 'cancelled';
 
 export interface WakeFailureEvent {
   roomId?: string;
@@ -170,6 +173,31 @@ export interface WakeBackpressureEvent {
   timestamp: number;
 }
 
+export interface WakeCancelledEvent {
+  kind?: 'cancelled';
+  wakeId: string;
+  targetAgentId: string;
+  initiatorAgentId?: string;
+  roomId?: string;
+  timestamp: number;
+}
+
+export interface WakeStartedEvent {
+  kind?: 'started';
+  wakeId: string;
+  targetAgentId: string;
+  initiatorAgentId?: string;
+  roomId?: string;
+  timestamp: number;
+}
+
+export interface CancelWakeResult {
+  success: boolean;
+  wasActive: boolean;
+  wasQueued: boolean;
+  error?: string;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   sendMessage: (agentId: string, message: string): Promise<Message> =>
     ipcRenderer.invoke('send-message', agentId, message),
@@ -197,6 +225,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string): Promise<WakeResult> =>
     ipcRenderer.invoke('request-agent-wake', initiatorAgentId, targetAgentId, message, roomId),
+  cancelWake: (wakeId: string): Promise<CancelWakeResult> =>
+    ipcRenderer.invoke('cancel-wake', wakeId),
   getChannels: (): Promise<Channel[]> => ipcRenderer.invoke('get-channels'),
   getAgents: (): Promise<Agent[]> => ipcRenderer.invoke('get-agents'),
   listProviders: (): Promise<ProviderInfo[]> => ipcRenderer.invoke('list-providers'),
@@ -272,5 +302,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeBackpressureEvent) => callback(wakeEvent);
     ipcRenderer.on('wake-backpressure', handler);
     return () => ipcRenderer.removeListener('wake-backpressure', handler);
+  },
+  onWakeCancelled: (callback: (event: WakeCancelledEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeCancelledEvent) => callback(wakeEvent);
+    ipcRenderer.on('wake-cancelled', handler);
+    return () => ipcRenderer.removeListener('wake-cancelled', handler);
+  },
+  onWakeStarted: (callback: (event: WakeStartedEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeStartedEvent) => callback(wakeEvent);
+    ipcRenderer.on('wake-started', handler);
+    return () => ipcRenderer.removeListener('wake-started', handler);
   },
 });

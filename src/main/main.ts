@@ -79,6 +79,22 @@ app.whenReady().then(async () => {
           activeWakes: event.activeWakes,
           timestamp: event.timestamp,
         });
+      } else if ('kind' in event && event.kind === 'started') {
+        mainWindow.webContents.send('wake-started', {
+          wakeId: event.wakeId,
+          targetAgentId: event.targetAgentId,
+          initiatorAgentId: event.initiatorAgentId,
+          roomId: event.roomId,
+          timestamp: event.timestamp,
+        });
+      } else if ('kind' in event && event.kind === 'cancelled') {
+        mainWindow.webContents.send('wake-cancelled', {
+          wakeId: event.wakeId,
+          targetAgentId: event.targetAgentId,
+          initiatorAgentId: event.initiatorAgentId,
+          roomId: event.roomId,
+          timestamp: event.timestamp,
+        });
       } else if ('reason' in event && event.reason === 'timeout') {
         mainWindow.webContents.send('wake-timeout', {
           roomId: event.roomId,
@@ -290,7 +306,7 @@ ipcMain.handle('send-message-stream', async (event, agentId: string, message: st
     message,
     agentId,
     undefined,
-    (streamAgentId, chunk, done) => {
+    (streamAgentId, chunk, done, wakeId) => {
       event.sender.send('message-stream-chunk', {
         id: messageId,
         agentId: streamAgentId,
@@ -299,9 +315,10 @@ ipcMain.handle('send-message-stream', async (event, agentId: string, message: st
         chunk,
         done,
         targetAgentId: agentId,
+        wakeId,
       });
     },
-    (wokeAgentId, chunk, done) => {
+    (wokeAgentId, chunk, done, wakeId) => {
       const wokeAgent = agentBus.getAgent(wokeAgentId);
       if (wokeAgent) {
         const wakeMessageId = `${Date.now()}-${wokeAgentId}`;
@@ -313,6 +330,7 @@ ipcMain.handle('send-message-stream', async (event, agentId: string, message: st
           chunk,
           done,
           targetAgentId: agentId,
+          wakeId,
         });
       }
     }
@@ -571,7 +589,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
           content,
           senderId,
           { room: roomId },
-          (streamAgentId, chunk, done) => {
+          (streamAgentId, chunk, done, wakeId) => {
             event.sender.send('room-stream-chunk', {
               id: messageId,
               roomId,
@@ -580,6 +598,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
               agentAvatar: agent.avatar,
               chunk,
               done,
+              wakeId,
             });
 
             if (done) {
@@ -630,7 +649,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
       content,
       agentId,
       { room: roomId },
-      (streamAgentId, chunk, done) => {
+      (streamAgentId, chunk, done, wakeId) => {
         if (!done) {
           accumulatedContent += chunk;
         } else {
@@ -645,6 +664,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
           agentAvatar: agent.avatar,
           chunk,
           done,
+          wakeId,
         });
 
         if (done) {
@@ -678,11 +698,29 @@ ipcMain.handle('clear-room-unread', async (_event, roomId: string) => {
 
 ipcMain.handle('request-agent-wake', async (_event, initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string) => {
   try {
-    await agentBus.requestAgentWake(initiatorAgentId, targetAgentId, message, roomId);
-    return { success: true };
+    const { wakeId } = await agentBus.requestAgentWake(initiatorAgentId, targetAgentId, message, roomId);
+    return { success: true, wakeId };
   } catch (error) {
     return { 
       success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
+});
+
+ipcMain.handle('cancel-wake', async (_event, wakeId: string) => {
+  try {
+    const result = agentBus.cancelWake(wakeId);
+    return { 
+      success: result.cancelled,
+      wasActive: result.wasActive,
+      wasQueued: result.wasQueued
+    };
+  } catch (error) {
+    return { 
+      success: false,
+      wasActive: false,
+      wasQueued: false,
       error: error instanceof Error ? error.message : 'Unknown error' 
     };
   }
