@@ -1,8 +1,18 @@
 # Membership-Safe Broadcast Polish - Verification Notes
 
 **Branch:** `cursor/membership-safe-broadcast-afea`  
-**Base:** `main` (commit 6eff282)  
+**Base:** `main` (commit 9f7e315 - includes merged PR #38)  
+**Tip SHA:** `0d24882` (rebased onto main @ 9f7e315)  
 **PR Context:** Independent from PR #38 (streaming backpressure), fills gaps in room broadcast fan-out paths
+
+## Rebase History
+
+- **Original base:** main @ 6eff282 (pre-PR #38)
+- **Original tip:** 3c91f4f
+- **Rebased onto:** main @ 9f7e315 (post-PR #38 merge, includes commits 9c5cc85, 9779fbe, a2a7eee, 4e67b5d, 9f7e315)
+- **New tip:** 0d24882
+- **Conflicts:** None (clean rebase)
+- **Rebase date:** 2026-09-14
 
 ## Objective
 
@@ -136,12 +146,34 @@ All membership denials now emit a consistent event shape:
   roomId: string;
   initiatorAgentId: string;     // or 'system' if no sender
   targetAgentId: string;
-  denialReason: 'target-not-member';  // consistent with agent-bus.ts
+  denialReason: 'initiator-not-member' | 'target-not-member';
   timestamp: number;
 }
 ```
 
 This matches the `WakeMembershipDeniedEvent` interface from `agent-bus.ts` and `preload.ts`.
+
+### Denial Reason Accuracy
+
+**This PR's changes (main.ts room broadcast):**
+- ✅ **Accurate:** Uses `'target-not-member'` only when `!room.memberAgentIds.includes(agentId)`
+- ✅ **Valid room context:** Room object already validated before membership check
+- ✅ **Genuine membership denial:** Target agent is not in the room's member list
+
+**Soft carry note from Remy (PR #38 merged code in agent-bus.ts):**
+
+Lines 169-175 and 180-187 in `agent-bus.ts` use `'target-not-member'` for:
+- Missing `roomManagerInstance` (infrastructure issue)
+- Missing `room` (data lookup failure)
+
+These are **fail-closed** (deny access) but the denial reason is technically imprecise - these are system/data errors, not membership issues. However:
+
+- ✅ **Closed type:** `denialReason` is limited to `'initiator-not-member' | 'target-not-member'`
+- ✅ **Out of scope:** Expanding the type would require changes to type definitions, preload, and potentially UI
+- ✅ **Acceptable:** Fail-closed behavior is correct (deny when unsure), just less precise on "why"
+- 📋 **Future consideration:** Could add denial reasons like `'room-not-found'` or `'system-error'` if type expanded
+
+**Decision:** Left as-is per "if type is closed, leave soft" guidance. This PR does not expand scope to modify denial reason types.
 
 ---
 
@@ -222,15 +254,22 @@ in agent-bus.ts, fills gap in room mention fan-out loops.
 
 ## Relationship to PR #38
 
-**PR #38:** Adds streaming backpressure queue support and membership checks for mention-based wakes INSIDE `agent-bus.ts` methods.
+**PR #38 status:** ✅ **MERGED** to main @ 9f7e315 (includes commits 9c5cc85, 9779fbe, a2a7eee, 4e67b5d)
 
-**This PR:** Adds membership checks for room broadcast fan-out loops in `main.ts` IPC handlers that directly call agent methods.
+**PR #38 added:** 
+- Streaming backpressure queue support with resolve/reject promises
+- Early membership checks for mention-based wakes INSIDE `agent-bus.ts` methods (`sendMessageWithWake`, `sendMessageWithWakeStream`)
+- Fail-closed membership validation (deny when roomManager or room not found)
 
-**Independence:** These changes are orthogonal. PR #38 modifies `agent-bus.ts`, this PR modifies `main.ts`. Both can merge in any order without conflicts (minimal/no overlapping hunks).
+**This PR adds:** 
+- Early membership checks for room broadcast fan-out loops in `main.ts` IPC handlers BEFORE calling agent methods
+- Consistent `wake-membership-denied` events at IPC layer
 
-**Synergy:** Together, they provide defense-in-depth:
+**Complementary hardening:**
 - PR #38: Protects mention extraction inside bus methods
 - This PR: Protects room broadcast fan-out before entering bus methods
+
+**Rebase result:** Clean rebase with no conflicts. Changes are orthogonal (different files/scopes).
 
 ---
 
@@ -247,8 +286,9 @@ in agent-bus.ts, fills gap in room mention fan-out loops.
 
 ## Build Output
 
-✅ **Build successful!**
+✅ **Build successful after rebase!**
 
+**Post-rebase build (tip 0d24882):**
 ```
 > bot-os@0.1.0 build
 > npm run build:main && npm run build:renderer
@@ -267,10 +307,10 @@ computing gzip size...
 ../../dist/renderer/index.html                   0.39 kB │ gzip:  0.27 kB
 ../../dist/renderer/assets/index-BSLIIo6n.css   23.07 kB │ gzip:  4.26 kB
 ../../dist/renderer/assets/index-ff_L9Ptx.js   176.54 kB │ gzip: 54.37 kB
-✓ built in 946ms
+✓ built in 924ms
 ```
 
 **TypeScript:** ✅ Clean compile, no type errors  
 **Vite:** ✅ Clean bundle, 1857 modules transformed successfully
 
-Full output: `artifacts/verify-botos/build-output.txt`
+Full output: `artifacts/verify-botos/build-output-rebased.txt`

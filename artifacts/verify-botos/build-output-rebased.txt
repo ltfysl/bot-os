@@ -1,0 +1,22 @@
+
+> bot-os@0.1.0 build
+> npm run build:main && npm run build:renderer
+
+
+> bot-os@0.1.0 build:main
+> tsc -p tsconfig.main.json
+
+
+> bot-os@0.1.0 build:renderer
+> vite build
+
+[33mThe CJS build of Vite's Node API is deprecated. See https://vite.dev/guide/troubleshooting.html#vite-cjs-node-api-deprecated for more details.[39m
+vite v5.4.21 building for production...
+transforming...
+✓ 1857 modules transformed.
+rendering chunks...
+computing gzip size...
+../../dist/renderer/index.html                   0.39 kB │ gzip:  0.27 kB
+../../dist/renderer/assets/index-BSLIIo6n.css   23.07 kB │ gzip:  4.26 kB
+../../dist/renderer/assets/index-ff_L9Ptx.js   176.54 kB │ gzip: 54.37 kB
+✓ built in 924ms
