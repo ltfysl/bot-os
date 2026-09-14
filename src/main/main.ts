@@ -133,6 +133,7 @@ app.whenReady().then(async () => {
         });
       } else if ('reason' in event) {
         mainWindow.webContents.send('wake-failure', {
+          wakeId: 'wakeId' in event ? event.wakeId : undefined,
           roomId: event.roomId,
           initiatorAgentId: event.initiatorAgentId,
           targetAgentId: event.targetAgentId,

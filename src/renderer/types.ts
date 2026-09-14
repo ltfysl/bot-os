@@ -35,6 +35,7 @@ export interface WakeResult {
 export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-found' | 'provider-not-found' | 'provider-unavailable' | 'general-error' | 'cancelled';
 
 export interface WakeFailureEvent {
+  wakeId?: string;
   roomId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
