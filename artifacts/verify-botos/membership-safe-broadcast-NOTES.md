@@ -2,7 +2,7 @@
 
 **Branch:** `cursor/membership-safe-broadcast-afea`  
 **Base:** `main` (commit 9f7e315 - includes merged PR #38)  
-**Tip SHA:** (pending commit - see rebase history)  
+**Tip SHA:** `90666a9` (fix for unreachable membership checks)  
 **PR Context:** Independent from PR #38 (streaming backpressure), fills gaps in room broadcast fan-out paths
 
 ## Critical Fix (Request Changes from Remy)
@@ -32,9 +32,9 @@ mentionedAgentIds.forEach((agentId) => {
 
 - **Original base:** main @ 6eff282 (pre-PR #38)
 - **Original tip:** 3c91f4f
-- **Rebased onto:** main @ 9f7e315 (post-PR #38 merge, includes commits 9c5cc85, 9779fbe, a2a7eee, 4e67b5d, 9f7e315)
+- **Rebased onto:** main @ 9f7e315 (post-PR #38 merge)
 - **Rebase tip:** 15d245f (docs update post-rebase)
-- **Fix commit:** (pending - fixes unreachable membership checks)
+- **Fix commit:** 90666a9 (fixes unreachable membership checks)
 - **Conflicts:** None (clean rebase)
 - **Rebase date:** 2026-09-14
 
