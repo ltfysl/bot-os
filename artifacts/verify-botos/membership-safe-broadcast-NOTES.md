@@ -2,15 +2,39 @@
 
 **Branch:** `cursor/membership-safe-broadcast-afea`  
 **Base:** `main` (commit 9f7e315 - includes merged PR #38)  
-**Tip SHA:** `0d24882` (rebased onto main @ 9f7e315)  
+**Tip SHA:** (pending commit - see rebase history)  
 **PR Context:** Independent from PR #38 (streaming backpressure), fills gaps in room broadcast fan-out paths
+
+## Critical Fix (Request Changes from Remy)
+
+**Issue:** Membership checks were unreachable - `extractRoomMentions` pre-filtered by `room.memberAgentIds`, so it never returned non-members.
+
+**Root cause:**
+```typescript
+// BEFORE (BROKEN)
+const mentionedAgentIds = extractRoomMentions(content, room.memberAgentIds);
+// ^ only iterates room members, never returns non-members
+
+mentionedAgentIds.forEach((agentId) => {
+  if (!room.memberAgentIds.includes(agentId)) {  // UNREACHABLE
+    event.sender.send('wake-membership-denied', ...);
+```
+
+**Fix applied:**
+1. Changed `extractRoomMentions` to check **all agents** from `agentBus.getAllAgents()`
+2. Removed `memberAgentIds` parameter (now checks full agent list)
+3. Membership gate is now **reachable** - non-members mentioned by @Name trigger denial
+4. Applied to BOTH `send-room-message` and `send-room-message-stream`
+
+**Result:** ✅ Non-member mentions now properly emit `wake-membership-denied` and don't start work.
 
 ## Rebase History
 
 - **Original base:** main @ 6eff282 (pre-PR #38)
 - **Original tip:** 3c91f4f
 - **Rebased onto:** main @ 9f7e315 (post-PR #38 merge, includes commits 9c5cc85, 9779fbe, a2a7eee, 4e67b5d, 9f7e315)
-- **New tip:** 0d24882
+- **Rebase tip:** 15d245f (docs update post-rebase)
+- **Fix commit:** (pending - fixes unreachable membership checks)
 - **Conflicts:** None (clean rebase)
 - **Rebase date:** 2026-09-14
 
@@ -26,8 +50,11 @@ Harden ALL room broadcast and mention fan-out paths so non-members:
 ### 1. Room Broadcast - Non-Streaming (`send-room-message`)
 **File:** `src/main/main.ts:499-540`
 
-**Before:**
+**Before (BROKEN - membership check unreachable):**
 ```typescript
+const mentionedAgentIds = extractRoomMentions(content, room.memberAgentIds);
+// ^ pre-filters to only members, never returns non-members
+
 mentionedAgentIds.forEach((agentId) => {
   const agent = agentBus.getAgent(agentId);
   if (!agent) {
@@ -38,12 +65,15 @@ mentionedAgentIds.forEach((agentId) => {
     .then(...)
 ```
 
-**Issue:** No membership validation before calling `sendMessage`. Non-member could receive message.
+**Issue:** `extractRoomMentions` only checked agents in `room.memberAgentIds`, so non-members were never in the list. The membership check was dead code.
 
-**After:**
+**After (FIXED - mentions resolve against all agents):**
 ```typescript
+const mentionedAgentIds = extractRoomMentions(content);
+// ^ now checks ALL agents from agentBus.getAllAgents()
+
 mentionedAgentIds.forEach((agentId) => {
-  if (!room.memberAgentIds.includes(agentId)) {
+  if (!room.memberAgentIds.includes(agentId)) {  // NOW REACHABLE
     event.sender.send('wake-membership-denied', {
       roomId,
       initiatorAgentId: senderId || 'system',
@@ -57,15 +87,18 @@ mentionedAgentIds.forEach((agentId) => {
   ...
 ```
 
-**Result:** Early membership check + event emission BEFORE any work begins.
+**Result:** Mentioning @NonMemberAgent now triggers denial event BEFORE any work begins.
 
 ---
 
 ### 2. Room Broadcast - Streaming (`send-room-message-stream`)
 **File:** `src/main/main.ts:608-658`
 
-**Before:**
+**Before (BROKEN - membership check unreachable):**
 ```typescript
+const mentionedAgentIds = extractRoomMentions(content, room.memberAgentIds);
+// ^ pre-filters to only members, never returns non-members
+
 mentionedAgentIds.forEach((agentId) => {
   const agent = agentBus.getAgent(agentId);
   if (!agent) {
@@ -77,12 +110,15 @@ mentionedAgentIds.forEach((agentId) => {
   agentBus.sendMessageWithWakeStream(...)
 ```
 
-**Issue:** No membership validation before starting stream. Non-member could start consuming resources.
+**Issue:** Same as non-streaming - `extractRoomMentions` only checked room members, making membership validation unreachable.
 
-**After:**
+**After (FIXED - mentions resolve against all agents):**
 ```typescript
+const mentionedAgentIds = extractRoomMentions(content);
+// ^ now checks ALL agents from agentBus.getAllAgents()
+
 mentionedAgentIds.forEach((agentId) => {
-  if (!room.memberAgentIds.includes(agentId)) {
+  if (!room.memberAgentIds.includes(agentId)) {  // NOW REACHABLE
     event.sender.send('wake-membership-denied', {
       roomId,
       initiatorAgentId: senderId || 'system',
@@ -96,7 +132,7 @@ mentionedAgentIds.forEach((agentId) => {
   ...
 ```
 
-**Result:** Early membership check + event emission BEFORE stream starts.
+**Result:** Mentioning @NonMemberAgent now triggers denial event BEFORE stream starts.
 
 ---
 
@@ -127,13 +163,39 @@ Already has comprehensive membership validation (lines 346-380):
 ---
 
 ### 5. `extractRoomMentions` helper
-**File:** `src/main/main.ts:690-703`
+**File:** `src/main/main.ts:690-702`
 
-Already filters by `room.memberAgentIds` - only returns agents who are members AND mentioned.
+**Before (BROKEN):**
+```typescript
+function extractRoomMentions(message: string, memberAgentIds: string[]): string[] {
+  // ... extract mention names ...
+  for (const agentId of memberAgentIds) {  // ONLY CHECKS MEMBERS
+    const agent = agentBus.getAgent(agentId);
+    if (agent && mentionedNames.includes(agent.name.toLowerCase())) {
+      agentIds.push(agentId);
+    }
+  }
+  return agentIds;  // NEVER RETURNS NON-MEMBERS
+}
+```
 
-**Defense in depth:** Our additional checks (items 1-2 above) ensure that even if there's a race condition or logic error, we validate again before wake/send.
+**Issue:** Pre-filtered mentions by `memberAgentIds`, so non-members were excluded at extraction time. Downstream membership checks were unreachable.
 
-**Status:** ✅ Pre-filtered, with additional defense in depth added
+**After (FIXED):**
+```typescript
+function extractRoomMentions(message: string): string[] {
+  // ... extract mention names ...
+  const allAgents = agentBus.getAllAgents();  // CHECK ALL AGENTS
+  for (const agent of allAgents) {
+    if (mentionedNames.includes(agent.name.toLowerCase())) {
+      agentIds.push(agent.id);
+    }
+  }
+  return agentIds;  // CAN NOW RETURN NON-MEMBERS
+}
+```
+
+**Result:** Mentions resolve against all registered agents, allowing membership gates to function correctly.
 
 ---
 
@@ -182,14 +244,16 @@ These are **fail-closed** (deny access) but the denial reason is technically imp
 ### Manual Verification Path
 
 1. **Setup:** Create room with agents A, B, C
-2. **Remove agent C** from room
+2. **Remove agent C** from room (or never add them)
 3. **Send message** from A mentioning @B and @C
 4. **Expected:**
    - Agent B receives wake (member)
-   - Agent C gets `wake-membership-denied` event immediately
+   - Agent C gets `wake-membership-denied` event immediately (**NOW WORKS**)
    - No queue slot consumed for C
    - No stream started for C
 5. **Verify:** Check renderer console for events
+
+**Critical:** With the fix, mentioning @NonMemberAgent by name will now properly trigger denial. Before, `extractRoomMentions` filtered out non-members, making the check unreachable.
 
 ### Build Verification
 
