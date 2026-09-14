@@ -115,8 +115,18 @@ app.whenReady().then(async () => {
           streaming: event.streaming,
           timestamp: event.timestamp,
         });
+      } else if ('timeoutMs' in event) {
+        mainWindow.webContents.send('wake-timeout', {
+          wakeId: 'wakeId' in event ? event.wakeId : undefined,
+          roomId: event.roomId,
+          initiatorAgentId: event.initiatorAgentId,
+          targetAgentId: event.targetAgentId,
+          timeoutMs: event.timeoutMs,
+          timestamp: event.timestamp,
+        });
       } else if ('reason' in event && event.reason === 'timeout') {
         mainWindow.webContents.send('wake-timeout', {
+          wakeId: 'wakeId' in event ? event.wakeId : undefined,
           roomId: event.roomId,
           initiatorAgentId: event.initiatorAgentId,
           targetAgentId: event.targetAgentId,
@@ -125,6 +135,7 @@ app.whenReady().then(async () => {
         });
       } else if ('denialReason' in event) {
         mainWindow.webContents.send('wake-membership-denied', {
+          wakeId: 'wakeId' in event ? event.wakeId : undefined,
           roomId: event.roomId,
           initiatorAgentId: event.initiatorAgentId,
           targetAgentId: event.targetAgentId,

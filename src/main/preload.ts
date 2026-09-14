@@ -151,6 +151,7 @@ export interface WakeFailureEvent {
 }
 
 export interface WakeTimeoutEvent {
+  wakeId?: string;
   roomId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
@@ -159,6 +160,7 @@ export interface WakeTimeoutEvent {
 }
 
 export interface WakeMembershipDeniedEvent {
+  wakeId?: string;
   roomId: string;
   initiatorAgentId: string;
   targetAgentId: string;

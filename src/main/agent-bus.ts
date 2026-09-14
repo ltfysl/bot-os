@@ -13,6 +13,7 @@ export interface WakeFailureEvent {
 }
 
 export interface WakeTimeoutEvent {
+  wakeId?: string;
   roomId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
@@ -21,6 +22,7 @@ export interface WakeTimeoutEvent {
 }
 
 export interface WakeMembershipDeniedEvent {
+  wakeId?: string;
   roomId: string;
   initiatorAgentId: string;
   targetAgentId: string;
@@ -209,12 +211,14 @@ export class AgentBus {
       const roomId = context?.room as string | undefined || context?.roomId as string | undefined;
       
       wokeAgents.forEach((wokeAgentId) => {
+        const wakeId = this.generateWakeId(wokeAgentId, agentId, roomId);
         if (roomId) {
           const { RoomManager } = require('./rooms');
           const roomManagerInstance = global.roomManager as InstanceType<typeof RoomManager> | undefined;
           
           if (!roomManagerInstance) {
             this.emitWakeEvent({
+              wakeId,
               roomId,
               initiatorAgentId: agentId,
               targetAgentId: wokeAgentId,
@@ -227,6 +231,7 @@ export class AgentBus {
           const room = roomManagerInstance.getRoom(roomId);
           if (!room) {
             this.emitWakeEvent({
+              wakeId,
               roomId,
               initiatorAgentId: agentId,
               targetAgentId: wokeAgentId,
@@ -238,6 +243,7 @@ export class AgentBus {
           
           if (!room.memberAgentIds.includes(wokeAgentId)) {
             this.emitWakeEvent({
+              wakeId,
               roomId,
               initiatorAgentId: agentId,
               targetAgentId: wokeAgentId,
@@ -248,7 +254,6 @@ export class AgentBus {
           }
         }
         
-        const wakeId = `wake-${Date.now()}-${wokeAgentId}-${Math.random().toString(36).slice(2, 9)}`;
         this.activeWakeIds.set(wakeId, {
           targetAgentId: wokeAgentId,
           initiatorAgentId: agentId,
@@ -387,12 +392,14 @@ export class AgentBus {
 
     if (wokeAgents.length > 0 && onWakeChunk && !context?.skipWakeFanOut) {
       wokeAgents.forEach((wokeAgentId) => {
+        const wakeId = this.generateWakeId(wokeAgentId, agentId, roomId);
         if (roomId) {
           const { RoomManager } = require('./rooms');
           const roomManagerInstance = global.roomManager as InstanceType<typeof RoomManager> | undefined;
           
           if (!roomManagerInstance) {
             this.emitWakeEvent({
+              wakeId,
               roomId,
               initiatorAgentId: agentId,
               targetAgentId: wokeAgentId,
@@ -405,6 +412,7 @@ export class AgentBus {
           const room = roomManagerInstance.getRoom(roomId);
           if (!room) {
             this.emitWakeEvent({
+              wakeId,
               roomId,
               initiatorAgentId: agentId,
               targetAgentId: wokeAgentId,
@@ -416,6 +424,7 @@ export class AgentBus {
           
           if (!room.memberAgentIds.includes(wokeAgentId)) {
             this.emitWakeEvent({
+              wakeId,
               roomId,
               initiatorAgentId: agentId,
               targetAgentId: wokeAgentId,
@@ -426,7 +435,6 @@ export class AgentBus {
           }
         }
         
-        const wakeId = `wake-${Date.now()}-${wokeAgentId}-${Math.random().toString(36).slice(2, 9)}`;
         this.activeWakeIds.set(wakeId, {
           targetAgentId: wokeAgentId,
           initiatorAgentId: agentId,
@@ -499,6 +507,7 @@ export class AgentBus {
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => {
         this.emitWakeEvent({
+          wakeId,
           targetAgentId: wokeAgentId,
           initiatorAgentId: wakerId,
           timeoutMs: 5000,
@@ -613,6 +622,7 @@ export class AgentBus {
       if (!room.memberAgentIds.includes(initiatorAgentId)) {
         const error = new Error(`Initiator agent ${initiatorAgentId} is not a member of room ${roomId}`);
         this.emitWakeEvent({
+          wakeId: earlyWakeId,
           roomId,
           initiatorAgentId,
           targetAgentId,
@@ -625,6 +635,7 @@ export class AgentBus {
       if (!room.memberAgentIds.includes(targetAgentId)) {
         const error = new Error(`Target agent ${targetAgentId} is not a member of room ${roomId}`);
         this.emitWakeEvent({
+          wakeId: earlyWakeId,
           roomId,
           initiatorAgentId,
           targetAgentId,
@@ -657,6 +668,7 @@ export class AgentBus {
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => {
           this.emitWakeEvent({
+            wakeId,
             roomId,
             initiatorAgentId,
             targetAgentId,
@@ -737,6 +749,7 @@ export class AgentBus {
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => {
         this.emitWakeEvent({
+          wakeId,
           targetAgentId: wokeAgentId,
           initiatorAgentId: wakerId,
           timeoutMs: 5000,
@@ -1037,6 +1050,7 @@ export class AgentBus {
 
           if (!roomManagerInstance) {
             this.emitWakeEvent({
+              wakeId,
               roomId,
               initiatorAgentId: initiatorAgentId || 'system',
               targetAgentId: target.agentId,
@@ -1050,6 +1064,7 @@ export class AgentBus {
           const room = roomManagerInstance.getRoom(roomId);
           if (!room) {
             this.emitWakeEvent({
+              wakeId,
               roomId,
               initiatorAgentId: initiatorAgentId || 'system',
               targetAgentId: target.agentId,
@@ -1062,6 +1077,7 @@ export class AgentBus {
 
           if (!room.memberAgentIds.includes(target.agentId)) {
             this.emitWakeEvent({
+              wakeId,
               roomId,
               initiatorAgentId: initiatorAgentId || 'system',
               targetAgentId: target.agentId,
