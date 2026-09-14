@@ -203,6 +203,16 @@ export interface WakeOrderSkipEvent {
   orderPosition: number;
 }
 
+export interface WakeSuccessEvent {
+  kind?: 'success';
+  wakeId?: string;
+  roomId?: string;
+  initiatorAgentId?: string;
+  targetAgentId: string;
+  streaming: boolean;
+  timestamp: number;
+}
+
 export interface CancelWakeResult {
   success: boolean;
   wasActive: boolean;
@@ -329,5 +339,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeOrderSkipEvent) => callback(wakeEvent);
     ipcRenderer.on('wake-order-skip', handler);
     return () => ipcRenderer.removeListener('wake-order-skip', handler);
+  },
+  onWakeSuccess: (callback: (event: WakeSuccessEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeSuccessEvent) => callback(wakeEvent);
+    ipcRenderer.on('wake-success', handler);
+    return () => ipcRenderer.removeListener('wake-success', handler);
   },
 });

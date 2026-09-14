@@ -97,6 +97,16 @@ export interface WakeOrderSkipEvent {
   orderPosition: number;
 }
 
+export interface WakeSuccessEvent {
+  kind?: 'success';
+  wakeId?: string;
+  roomId?: string;
+  initiatorAgentId?: string;
+  targetAgentId: string;
+  streaming: boolean;
+  timestamp: number;
+}
+
 export interface CancelWakeResult {
   success: boolean;
   wasActive: boolean;
@@ -254,6 +264,7 @@ declare global {
       onWakeCancelled: (callback: (event: WakeCancelledEvent) => void) => (() => void);
       onWakeStarted: (callback: (event: WakeStartedEvent) => void) => (() => void);
       onWakeOrderSkip: (callback: (event: WakeOrderSkipEvent) => void) => (() => void);
+      onWakeSuccess: (callback: (event: WakeSuccessEvent) => void) => (() => void);
     };
   }
 }

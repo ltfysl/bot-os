@@ -65,7 +65,17 @@ export interface WakeOrderSkipEvent {
   orderPosition: number;
 }
 
-export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent) => void;
+export interface WakeSuccessEvent {
+  kind: 'success';
+  wakeId?: string;
+  roomId?: string;
+  initiatorAgentId?: string;
+  targetAgentId: string;
+  streaming: boolean;
+  timestamp: number;
+}
+
+export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent) => void;
 
 export interface AgentProvider {
   id: string;
@@ -257,6 +267,15 @@ export class AgentBus {
           try {
             const wakeMsg = await this.wakeAgent(wokeAgentId, message, agentId, wakeId);
             onWakeResponse(wakeMsg);
+            this.emitWakeEvent({
+              kind: 'success',
+              wakeId,
+              roomId,
+              initiatorAgentId: agentId,
+              targetAgentId: wokeAgentId,
+              streaming: false,
+              timestamp: Date.now(),
+            });
           } catch (err) {
             console.error(`Failed to wake agent ${wokeAgentId}:`, err);
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -422,6 +441,15 @@ export class AgentBus {
         const wakeFn = async () => {
           try {
             await this.wakeAgentStream(wokeAgentId, message, agentId, onWakeChunk, wakeId);
+            this.emitWakeEvent({
+              kind: 'success',
+              wakeId,
+              roomId,
+              initiatorAgentId: agentId,
+              targetAgentId: wokeAgentId,
+              streaming: true,
+              timestamp: Date.now(),
+            });
           } catch (err) {
             console.error(`Failed to wake agent ${wokeAgentId}:`, err);
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -631,6 +659,15 @@ export class AgentBus {
 
       try {
         await Promise.race([wakePromise, timeoutPromise]);
+        this.emitWakeEvent({
+          kind: 'success',
+          wakeId,
+          roomId,
+          initiatorAgentId,
+          targetAgentId,
+          streaming: false,
+          timestamp: Date.now(),
+        });
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         if (!errorMessage.includes('Wake timeout')) {
@@ -852,7 +889,7 @@ export class AgentBus {
     return false;
   }
 
-  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent): void {
+  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent): void {
     if (this.onWakeEvent) {
       this.onWakeEvent(event);
     }
@@ -1069,11 +1106,29 @@ export class AgentBus {
                     onChunk(wakeId, target.agentId, chunk, done);
                   }
                 );
+                this.emitWakeEvent({
+                  kind: 'success',
+                  wakeId,
+                  roomId,
+                  initiatorAgentId,
+                  targetAgentId: target.agentId,
+                  streaming: true,
+                  timestamp: Date.now(),
+                });
               } else {
                 const response = await this.sendMessage(target.message, target.agentId, context);
                 if (onComplete) {
                   onComplete(wakeId, target.agentId, response);
                 }
+                this.emitWakeEvent({
+                  kind: 'success',
+                  wakeId,
+                  roomId,
+                  initiatorAgentId,
+                  targetAgentId: target.agentId,
+                  streaming: false,
+                  timestamp: Date.now(),
+                });
               }
             } finally {
               this.activeWakeIds.delete(wakeId);
