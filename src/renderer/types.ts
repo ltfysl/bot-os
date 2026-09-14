@@ -33,6 +33,7 @@ export interface WakeResult {
 export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-found' | 'provider-not-found' | 'provider-unavailable' | 'general-error';
 
 export interface WakeFailureEvent {
+  wakeId?: string;
   roomId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
@@ -42,6 +43,7 @@ export interface WakeFailureEvent {
 }
 
 export interface WakeTimeoutEvent {
+  wakeId?: string;
   roomId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
@@ -50,6 +52,7 @@ export interface WakeTimeoutEvent {
 }
 
 export interface WakeMembershipDeniedEvent {
+  wakeId?: string;
   roomId: string;
   initiatorAgentId: string;
   targetAgentId: string;
@@ -58,6 +61,7 @@ export interface WakeMembershipDeniedEvent {
 }
 
 export interface WakeBackpressureEvent {
+  wakeId?: string;
   targetAgentId: string;
   queuePosition: number;
   queueLength: number;
@@ -142,6 +146,7 @@ export interface RoomMessage {
 export interface RoomStreamChunk {
   id: string;
   roomId: string;
+  wakeId?: string;
   agentId: string;
   agentName: string;
   agentAvatar: string;

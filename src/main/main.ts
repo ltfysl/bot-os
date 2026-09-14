@@ -640,6 +640,18 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
           roomManager.addRoomMessage(assistantMessage);
           roomManager.incrementUnread(roomId);
         }
+      },
+      (wokeAgentId, chunk, done, wakeId) => {
+        event.sender.send('room-stream-chunk', {
+          id: `${Date.now()}-${wokeAgentId}`,
+          roomId,
+          wakeId,
+          agentId: wokeAgentId,
+          agentName: agentBus.getAgent(wokeAgentId)?.name || 'Unknown',
+          agentAvatar: agentBus.getAgent(wokeAgentId)?.avatar || '??',
+          chunk,
+          done,
+        });
       }
     ).catch((err) => {
       console.error(`Failed to wake agent ${agentId} in room ${roomId}:`, err);
