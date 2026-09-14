@@ -463,7 +463,7 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
   
   roomManager.addRoomMessage(userMessage);
 
-  const mentionedAgentIds = extractRoomMentions(content, room.memberAgentIds);
+  const mentionedAgentIds = extractRoomMentions(content);
   
   if (mentionedAgentIds.length === 0) {
     if (senderId) {
@@ -497,6 +497,17 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
   }
 
   mentionedAgentIds.forEach((agentId) => {
+    if (!room.memberAgentIds.includes(agentId)) {
+      event.sender.send('wake-membership-denied', {
+        roomId,
+        initiatorAgentId: senderId || 'system',
+        targetAgentId: agentId,
+        denialReason: 'target-not-member',
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
     const agent = agentBus.getAgent(agentId);
     if (!agent) {
       console.error(`Agent not found: ${agentId}`);
@@ -545,7 +556,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
   
   roomManager.addRoomMessage(userMessage);
 
-  const mentionedAgentIds = extractRoomMentions(content, room.memberAgentIds);
+  const mentionedAgentIds = extractRoomMentions(content);
   
   if (mentionedAgentIds.length === 0) {
     if (senderId) {
@@ -595,6 +606,17 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
   }
 
   mentionedAgentIds.forEach((agentId) => {
+    if (!room.memberAgentIds.includes(agentId)) {
+      event.sender.send('wake-membership-denied', {
+        roomId,
+        initiatorAgentId: senderId || 'system',
+        targetAgentId: agentId,
+        denialReason: 'target-not-member',
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
     const agent = agentBus.getAgent(agentId);
     if (!agent) {
       console.error(`Agent not found: ${agentId}`);
@@ -666,16 +688,16 @@ ipcMain.handle('request-agent-wake', async (_event, initiatorAgentId: string, ta
   }
 });
 
-function extractRoomMentions(message: string, memberAgentIds: string[]): string[] {
+function extractRoomMentions(message: string): string[] {
   const mentionPattern = /@(\w+)/g;
   const matches = Array.from(message.matchAll(mentionPattern));
   const mentionedNames = matches.map((m) => m[1].toLowerCase());
 
   const agentIds: string[] = [];
-  for (const agentId of memberAgentIds) {
-    const agent = agentBus.getAgent(agentId);
-    if (agent && mentionedNames.includes(agent.name.toLowerCase())) {
-      agentIds.push(agentId);
+  const allAgents = agentBus.getAllAgents();
+  for (const agent of allAgents) {
+    if (mentionedNames.includes(agent.name.toLowerCase())) {
+      agentIds.push(agent.id);
     }
   }
   return agentIds;
