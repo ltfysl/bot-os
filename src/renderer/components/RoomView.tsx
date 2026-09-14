@@ -47,6 +47,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
       if (message.roomId === room.id) {
         setMessages((prev) => [...prev, message]);
         setIsLoading(false);
+        setBackpressureState(null);
         if (loadingTimeoutId) {
           clearTimeout(loadingTimeoutId);
           setLoadingTimeoutId(undefined);
@@ -114,6 +115,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
             return prev;
           });
           setIsLoading(false);
+          setBackpressureState(null);
           if (loadingTimeoutId) {
             clearTimeout(loadingTimeoutId);
             setLoadingTimeoutId(undefined);
@@ -136,6 +138,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
           timestamp: event.timestamp,
         }]);
         setIsLoading(false);
+        setBackpressureState(null);
       }
     });
 
@@ -150,6 +153,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
           timestamp: event.timestamp,
         }]);
         setIsLoading(false);
+        setBackpressureState(null);
       }
     });
 
@@ -164,6 +168,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
           timestamp: event.timestamp,
         }]);
         setIsLoading(false);
+        setBackpressureState(null);
       }
     });
 
@@ -197,10 +202,6 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
       default:
         return 'Wake failed';
     }
-  };
-
-  const handleRetryWake = async (errorId: string) => {
-    setWakeErrors((prev) => prev.filter((e) => e.id !== errorId));
   };
 
   const loadMessages = async () => {
@@ -369,7 +370,6 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
             agentName={lastAssistantMessage?.agentName}
             agentAvatar={lastAssistantMessage?.agentAvatar}
             wakeErrors={wakeErrors}
-            onRetryWake={handleRetryWake}
           />
         )}
       </div>

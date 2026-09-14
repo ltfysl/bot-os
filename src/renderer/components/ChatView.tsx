@@ -68,6 +68,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
     const unsubscribe = window.electronAPI.onWakeResponse((message: Message) => {
       if (message.targetAgentId === agent?.id) {
         setMessages((prev) => [...prev, message]);
+        setBackpressureState(null);
       }
     });
     return () => unsubscribe();
@@ -126,6 +127,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
             return prev;
           });
           setIsLoading(false);
+          setBackpressureState(null);
         }
       }
     });
@@ -141,47 +143,44 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
 
   useEffect(() => {
     const unsubFailure = window.electronAPI.onWakeFailure((event: WakeFailureEvent) => {
-      if (event.targetAgentId === agent?.id) {
-        const agents = JSON.parse(localStorage.getItem('agents') || '[]');
-        const targetAgent = agents.find((a: Agent) => a.id === event.targetAgentId);
+      if (event.targetAgentId === agent?.id && !event.roomId) {
         setWakeErrors((prev) => [...prev, {
           id: `failure-${event.timestamp}`,
           type: 'wake-failure',
           reason: formatWakeFailureReason(event.reason),
-          agentName: targetAgent?.name,
+          agentName: agent?.name,
           timestamp: event.timestamp,
         }]);
         setIsLoading(false);
+        setBackpressureState(null);
       }
     });
 
     const unsubTimeout = window.electronAPI.onWakeTimeout((event: WakeTimeoutEvent) => {
-      if (event.targetAgentId === agent?.id) {
-        const agents = JSON.parse(localStorage.getItem('agents') || '[]');
-        const targetAgent = agents.find((a: Agent) => a.id === event.targetAgentId);
+      if (event.targetAgentId === agent?.id && !event.roomId) {
         setWakeErrors((prev) => [...prev, {
           id: `timeout-${event.timestamp}`,
           type: 'wake-timeout',
           reason: 'Timed out',
-          agentName: targetAgent?.name,
+          agentName: agent?.name,
           timestamp: event.timestamp,
         }]);
         setIsLoading(false);
+        setBackpressureState(null);
       }
     });
 
     const unsubMembership = window.electronAPI.onWakeMembershipDenied((event: WakeMembershipDeniedEvent) => {
-      if (event.targetAgentId === agent?.id) {
-        const agents = JSON.parse(localStorage.getItem('agents') || '[]');
-        const targetAgent = agents.find((a: Agent) => a.id === event.targetAgentId);
+      if (event.targetAgentId === agent?.id && !event.roomId) {
         setWakeErrors((prev) => [...prev, {
           id: `membership-${event.timestamp}`,
           type: 'wake-membership-denied',
           reason: 'Not a member',
-          agentName: targetAgent?.name,
+          agentName: agent?.name,
           timestamp: event.timestamp,
         }]);
         setIsLoading(false);
+        setBackpressureState(null);
       }
     });
 
@@ -197,7 +196,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
       unsubMembership();
       unsubBackpressure();
     };
-  }, [agent?.id]);
+  }, [agent?.id, agent?.name]);
 
   const formatWakeFailureReason = (reason: string): string => {
     switch (reason) {
@@ -214,10 +213,6 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
       default:
         return 'Wake failed';
     }
-  };
-
-  const handleRetryWake = async (errorId: string) => {
-    setWakeErrors((prev) => prev.filter((e) => e.id !== errorId));
   };
 
   useEffect(() => {
@@ -424,7 +419,6 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
           resolvedWidgets={resolvedWidgets}
           onWidgetResolve={handleWidgetResolve}
           wakeErrors={wakeErrors}
-          onRetryWake={handleRetryWake}
         />
       </div>
       <MessageComposer 

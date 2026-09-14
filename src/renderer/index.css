@@ -518,13 +518,15 @@ code, .path {
   color: #ef4444;
 }
 
+.wake-error-avatar {
+  opacity: 0.5;
+}
+
 .wake-error-row {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 12px;
-  background: var(--bg-tertiary);
-  border-radius: 6px;
+  padding: 6px 0;
   font-size: 13px;
 }
 
@@ -536,20 +538,6 @@ code, .path {
 .wake-error-agent {
   color: var(--text-muted);
   font-size: 12px;
-}
-
-.wake-error-retry {
-  margin-left: auto;
-  color: var(--text-tertiary);
-  font-size: 12px;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: all 0.15s ease;
-}
-
-.wake-error-retry:hover {
-  color: var(--text-secondary);
-  background: var(--bg-hover);
 }
 
 .message-text.streaming {

@@ -38,7 +38,6 @@ interface MessageListProps {
   resolvedWidgets?: ResolvedWidget[];
   onWidgetResolve?: (response: { selected: string[]; customValue?: string; dismissed: boolean }) => void;
   wakeErrors?: WakeErrorEvent[];
-  onRetryWake?: (errorId: string) => void;
 }
 
 function parseInlineCode(text: string): (string | JSX.Element)[] {
@@ -69,7 +68,7 @@ function parseInlineCode(text: string): (string | JSX.Element)[] {
   return parts.length > 0 ? parts : [text];
 }
 
-export default function MessageList({ messages, streamingMessage, isLoading, agentName, agentAvatar, widgetRequest, resolvedWidgets = [], onWidgetResolve, wakeErrors = [], onRetryWake }: MessageListProps) {
+export default function MessageList({ messages, streamingMessage, isLoading, agentName, agentAvatar, widgetRequest, resolvedWidgets = [], onWidgetResolve, wakeErrors = [] }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -136,7 +135,7 @@ export default function MessageList({ messages, streamingMessage, isLoading, age
       })}
       {wakeErrors.map((error) => (
         <div key={error.id} className="message assistant">
-          <div className="message-avatar">
+          <div className="message-avatar wake-error-avatar">
             <AlertCircle size={16} strokeWidth={2} />
           </div>
           <div className="message-content">
@@ -144,14 +143,6 @@ export default function MessageList({ messages, streamingMessage, isLoading, age
               <span className="wake-error-reason">{error.reason}</span>
               {error.agentName && (
                 <span className="wake-error-agent">{error.agentName}</span>
-              )}
-              {onRetryWake && (
-                <button 
-                  className="wake-error-retry"
-                  onClick={() => onRetryWake(error.id)}
-                >
-                  Retry
-                </button>
               )}
             </div>
           </div>
