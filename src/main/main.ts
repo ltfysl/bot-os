@@ -95,6 +95,17 @@ app.whenReady().then(async () => {
           roomId: event.roomId,
           timestamp: event.timestamp,
         });
+      } else if ('kind' in event && event.kind === 'order-skip') {
+        mainWindow.webContents.send('wake-order-skip', {
+          wakeId: event.wakeId,
+          roomId: event.roomId,
+          initiatorAgentId: event.initiatorAgentId,
+          targetAgentId: event.targetAgentId,
+          reason: event.reason,
+          errorMessage: event.errorMessage,
+          timestamp: event.timestamp,
+          orderPosition: event.orderPosition,
+        });
       } else if ('reason' in event && event.reason === 'timeout') {
         mainWindow.webContents.send('wake-timeout', {
           roomId: event.roomId,
@@ -514,26 +525,15 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
     return userMessage;
   }
 
-  mentionedAgentIds.forEach((agentId) => {
-    if (!room.memberAgentIds.includes(agentId)) {
-      event.sender.send('wake-membership-denied', {
-        roomId,
-        initiatorAgentId: senderId || 'system',
-        targetAgentId: agentId,
-        denialReason: 'target-not-member',
-        timestamp: Date.now(),
-      });
-      return;
-    }
-
-    const agent = agentBus.getAgent(agentId);
-    if (!agent) {
-      console.error(`Agent not found: ${agentId}`);
-      return;
-    }
-
-    agentBus.sendMessage(content, agentId, { room: roomId })
-      .then((response) => {
+  const targets = mentionedAgentIds.map((agentId) => ({ agentId, message: content }));
+  void agentBus
+    .enqueueOrderedWakes(
+      targets,
+      senderId || 'system',
+      roomId,
+      undefined,
+      (wakeId, agentId, response) => {
+        const agent = agentBus.getAgent(agentId);
         const assistantMessage = {
           id: response.id,
           roomId,
@@ -541,19 +541,18 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
           role: 'assistant' as const,
           timestamp: response.timestamp,
           agentId,
-          agentName: agent.name,
-          agentAvatar: agent.avatar,
+          agentName: agent?.name,
+          agentAvatar: agent?.avatar,
+          wakeId,
         };
-        
         roomManager.addRoomMessage(assistantMessage);
         roomManager.incrementUnread(roomId);
-        
         event.sender.send('room-fan-in-response', assistantMessage);
-      })
-      .catch((err) => {
-        console.error(`Failed to wake agent ${agentId} in room ${roomId}:`, err);
-      });
-  });
+      }
+    )
+    .catch((err) => {
+      console.error(`Ordered room fan-out failed in room ${roomId}:`, err);
+    });
   
   return userMessage;
 });
@@ -585,11 +584,18 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
       const agent = agentBus.getAgent(senderId);
       if (agent) {
         const messageId = `${Date.now()}-${senderId}`;
+        let accumulatedContent = '';
         agentBus.sendMessageWithWakeStream(
           content,
           senderId,
           { room: roomId },
           (streamAgentId, chunk, done, wakeId) => {
+            if (!done) {
+              accumulatedContent += chunk;
+            } else if (chunk) {
+              accumulatedContent = chunk;
+            }
+
             event.sender.send('room-stream-chunk', {
               id: messageId,
               roomId,
@@ -602,11 +608,10 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
             });
 
             if (done) {
-              const fullContent = chunk;
               const assistantMessage = {
                 id: messageId,
                 roomId,
-                content: fullContent,
+                content: accumulatedContent,
                 role: 'assistant' as const,
                 timestamp: Date.now(),
                 agentId: senderId,
@@ -624,69 +629,59 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
     return userMessage;
   }
 
-  mentionedAgentIds.forEach((agentId) => {
-    if (!room.memberAgentIds.includes(agentId)) {
-      event.sender.send('wake-membership-denied', {
-        roomId,
-        initiatorAgentId: senderId || 'system',
-        targetAgentId: agentId,
-        denialReason: 'target-not-member',
-        timestamp: Date.now(),
-      });
-      return;
-    }
-
-    const agent = agentBus.getAgent(agentId);
-    if (!agent) {
-      console.error(`Agent not found: ${agentId}`);
-      return;
-    }
-
-    const messageId = `${Date.now()}-${agentId}`;
-    let accumulatedContent = '';
-
-    agentBus.sendMessageWithWakeStream(
-      content,
-      agentId,
-      { room: roomId },
-      (streamAgentId, chunk, done, wakeId) => {
+  const streamTargets = mentionedAgentIds.map((agentId) => ({ agentId, message: content }));
+  const accumulatedByWake = new Map<string, string>();
+  void agentBus
+    .enqueueOrderedWakes(
+      streamTargets,
+      senderId || 'system',
+      roomId,
+      (wakeId, agentId, chunk, done) => {
+        const agent = agentBus.getAgent(agentId);
+        const messageId = `${wakeId}`;
+        const prev = accumulatedByWake.get(wakeId) || '';
+        // Accumulate deltas; if done brings full text use it, if done is empty keep acc (#32-class).
+        let next = prev;
         if (!done) {
-          accumulatedContent += chunk;
-        } else {
-          accumulatedContent = chunk;
+          next = prev + chunk;
+        } else if (chunk) {
+          next = chunk;
         }
+        accumulatedByWake.set(wakeId, next);
 
         event.sender.send('room-stream-chunk', {
           id: messageId,
           roomId,
-          agentId: streamAgentId,
-          agentName: agent.name,
-          agentAvatar: agent.avatar,
+          agentId,
+          agentName: agent?.name || agentId,
+          agentAvatar: agent?.avatar || '',
           chunk,
           done,
           wakeId,
         });
 
         if (done) {
+          const fullContent = accumulatedByWake.get(wakeId) || '';
+          accumulatedByWake.delete(wakeId);
           const assistantMessage = {
             id: messageId,
             roomId,
-            content: accumulatedContent,
+            content: fullContent,
             role: 'assistant' as const,
             timestamp: Date.now(),
             agentId,
-            agentName: agent.name,
-            agentAvatar: agent.avatar,
+            agentName: agent?.name,
+            agentAvatar: agent?.avatar,
+            wakeId,
           };
-          
           roomManager.addRoomMessage(assistantMessage);
           roomManager.incrementUnread(roomId);
         }
       }
-    ).catch((err) => {
-      console.error(`Failed to wake agent ${agentId} in room ${roomId}:`, err);
+    )
+    .catch((err) => {
+      console.error(`Ordered room stream fan-out failed in room ${roomId}:`, err);
     });
-  });
   
   return userMessage;
 });
