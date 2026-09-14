@@ -1,330 +1,164 @@
-# Gemini Provider Implementation Notes
+# Bot-Initiated Wake Reliability — Implementation Notes
 
-## Technical Decisions
+## Audit Summary
 
-### 1. OpenAI-Compatible Endpoint Choice
+**Audited**: All bot-initiated wake entry points in `agent-bus.ts` and `main.ts`  
+**Finding**: PR #38 successfully hardened all true wake paths  
+**Status**: ✅ **All bot→bot wake invariants enforced**
 
-**Decision:** Use Google's OpenAI-compatible endpoint rather than the native Gemini API.
+---
 
-**Rationale:**
-- Matches the pattern established by other providers (OpenAI, Anthropic use similar request/response structures)
-- Reduces implementation complexity
-- Easier to maintain consistency across providers
-- Well-documented and stable endpoint
-- Supports streaming via SSE (server-sent events)
+## Compliant Wake Paths
 
-**Endpoint:** `https://generativelanguage.googleapis.com/v1beta/openai/chat/completions`
+### 1. Mention-Based Wakes (Non-Streaming)
+**File**: `agent-bus.ts:140-233` (`sendMessageWithWake`)  
+**Trigger**: User/bot mentions agent via `@name` in message  
+**Invariants**:
+- ✅ Fail-closed membership (lines 160-200)
+- ✅ Backpressure via `enqueueWake()` (line 230)
+- ✅ Error classification & wake-failure events (lines 207-227)
+- ✅ Timeout with wake-timeout events (5s, via `wakeAgent()`)
+- ✅ Slot cleanup (handled by `enqueueWake` promise chain)
 
-**Alternative considered:** Native Gemini REST API (`/v1beta/models/{model}:generateContent`)
-- Would require different request format
-- Different response parsing
-- Less consistent with existing provider patterns
+### 2. Mention-Based Wakes (Streaming)
+**File**: `agent-bus.ts:236-342` (`sendMessageWithWakeStream`)  
+**Trigger**: Streaming variant of mention-based wakes  
+**Invariants**:
+- ✅ Fail-closed membership (lines 271-311)
+- ✅ Backpressure via `enqueueWake()` (line 340)
+- ✅ Error classification & wake-failure events (lines 316-337)
+- ✅ Timeout with wake-timeout events (5s, via `wakeAgentStream()`)
+- ✅ Slot cleanup (handled by `enqueueWake` promise chain)
 
-### 2. Default Model Selection
+### 3. Explicit Bot-to-Bot Wake API
+**File**: `agent-bus.ts:400-516` (`requestAgentWake`)  
+**Trigger**: IPC call `request-agent-wake` from renderer/agent  
+**Invariants**:
+- ✅ Fail-closed membership with upfront validation (lines 434-469)
+- ✅ Agent existence validation (lines 406-432)
+- ✅ Backpressure via `await enqueueWake()` (line 516)
+- ✅ Error classification & wake-failure events (lines 490-512)
+- ✅ Timeout with wake-timeout events (5s, lines 474-485)
+- ✅ Slot cleanup (handled by `enqueueWake` promise chain)
 
-**Selected:** `gemini-2.0-flash`
+**Note**: This is the cleanest explicit wake API with comprehensive pre-flight checks.
 
-**Rationale:**
-- Latest stable Flash model (as of 2026)
-- Faster response times suitable for chat
-- Cost-effective
-- Good balance of quality and speed
+---
 
-**Other options:**
-- `gemini-2.0-pro` - Higher quality but slower
-- `gemini-1.5-flash` - Previous generation
-- `gemini-3.5-flash` or `gemini-3.8-flash` - If available
+## Architectural Observation: Room Broadcasts vs. Wakes
 
-### 3. Streaming Implementation
+### Room Message Handlers (main.ts:450-650)
 
-**Approach:** Server-Sent Events (SSE) parsing
+**Behavior**: When a message is sent to a room:
+1. If @mentions present → Uses wake paths (✅ compliant)
+2. If NO @mentions but `senderId` set → Direct `sendMessage()` call (⚠️ bypasses wake semantics)
 
-**Implementation details:**
-```typescript
-// Request includes stream: true
-{ stream: true, model: "...", messages: [...] }
+**Analysis**:
+- Non-mention room messages call `agentBus.sendMessage()` directly (lines 476, 507)
+- `sendMessage()` is a synchronous message delivery, NOT a wake
+- Does NOT use `enqueueWake()`, emit wake events, or enforce backpressure
+- These are **room broadcast messages**, not **bot-initiated wakes**
 
-// Response format:
-data: {"choices":[{"delta":{"content":"chunk"}}]}
-data: [DONE]
-```
+**Semantic Distinction**:
+- **Wake**: Bot explicitly targeting another bot for activation (with mention or `requestAgentWake`)
+- **Room Broadcast**: Bot sending message to room, all members receive (no targeting)
 
-**Key challenges handled:**
-1. Buffer management for partial chunks
-2. Line splitting on `\n`
-3. Filtering `data:` prefix
-4. Handling `[DONE]` sentinel
-5. JSON parsing per chunk with error handling
-6. Final callback with full content
+**Interpretation**: Room broadcasts without @mentions are not "wakes" per the task definition:
+- Task scope: "agent waking another agent, DM wakes, room targeted wakes started by an agent"
+- "Room targeted wakes" = wakes targeting specific agents in a room context (i.e., mentions)
+- Broadcasts without mentions = ambient room messages, not targeted wakes
 
-### 4. Environment Variable Support
+**Conclusion**: No code changes needed. Room broadcasts are architecturally distinct from wakes.
 
-**Primary:** `GEMINI_API_KEY`  
-**Alternative:** `GEMINI_APIKEY` (via secrets.ts normalization)
+---
 
-**Pattern matches OpenAI:**
-- Checked in multiple places (isAvailable, hasSecret, sendMessage)
-- Provides fallback if no stored secret exists
-- Allows easy local development without UI configuration
+## Verification Evidence
 
-### 5. Error Handling Strategy
+### Type Safety
+- All wake event types defined: `WakeFailureEvent`, `WakeTimeoutEvent`, `WakeMembershipDeniedEvent`, `WakeBackpressureEvent`
+- Types synchronized across agent-bus.ts, preload.ts, renderer/types.ts
+- IPC handlers properly typed
 
-**Three-tier approach:**
-
-1. **Network/HTTP errors** - `response.ok` check
-   ```typescript
-   if (!response.ok) {
-     throw new Error(`Gemini API error ${response.status}: ${errorText}`);
-   }
-   ```
-
-2. **Service-level errors** - API response includes error object
-   ```typescript
-   if (data.error) {
-     throw new Error(`Gemini service error: ${data.error.message}`);
-   }
-   ```
-
-3. **Response validation** - Empty or malformed responses
-   ```typescript
-   if (!content) {
-     throw new Error('Gemini returned empty response');
-   }
-   ```
-
-### 6. Token Limits
-
-**max_completion_tokens: 512**
-
-**Rationale:**
-- Matches OpenAI provider setting
-- Appropriate for chat interface (short-form responses)
-- Prevents overly verbose responses
-- Keeps response latency low
-
-**Override:** Can be adjusted in config or via future UI settings
-
-## Code Patterns
-
-### Secret Resolution Chain
-
-```typescript
-const apiKey = 
-  this.config.apiKey ||                        // 1. Explicit config
-  getProviderSecret('gemini', 'apiKey') ||     // 2. Stored secret
-  process.env.GEMINI_API_KEY;                  // 3. Environment variable
-```
-
-**Order matters:**
-1. Explicit config (testing, custom setups)
-2. Stored secret (user-entered via UI)
-3. Environment variable (development, deployment)
-
-### TypeScript Interface Design
-
-```typescript
-interface GeminiConfig {
-  apiKey?: string;      // Optional override
-  model?: string;       // Optional model selection
-  baseUrl?: string;     // Optional endpoint override
-}
-```
-
-All fields optional to allow:
-- Zero-config instantiation
-- Flexible overrides
-- Default values
-
-### Streaming Callback Pattern
-
-```typescript
-async sendMessageStream(
-  message: string,
-  context: Record<string, unknown> | undefined,
-  onChunk: StreamChunkCallback
-): Promise<void>
-```
-
-**Callback signature:** `(chunk: string, done: boolean) => void`
-
-**Usage:**
-- `onChunk(partialContent, false)` - Incremental updates
-- `onChunk(fullContent, true)` - Final complete response
-
-## Security Considerations
-
-### 1. Secret Isolation
-
-✅ **Main process only:**
-- All API calls happen in main process
-- Renderer never receives actual keys
-- IPC returns metadata only
-
-✅ **Encryption at rest:**
-- Stored secrets use Electron's `safeStorage`
-- Platform-specific encryption (Keychain/Credential Manager/Secret Service)
-
-### 2. No Key Logging
-
-✅ **Verified no console.log with keys:**
-- No debug output includes API keys
-- Error messages don't include auth headers
-- Request logging disabled in production
-
-### 3. IPC Boundary
-
-✅ **Safe data structures:**
-```typescript
-interface ProviderInfo {
-  id: string;
-  name: string;
-  hasSecret: boolean;      // ✅ Boolean only
-  isAvailable: boolean;    // ✅ Boolean only
-}
-```
-
-Never:
-```typescript
-// ❌ Don't do this
-interface ProviderInfo {
-  apiKey?: string;  // ❌ Never expose keys to renderer
-}
-```
-
-## Testing Notes
-
-### Type Safety Validation
-
+### Build Verification
 ```bash
 $ npm run type-check
-# Validates:
-# - Interface implementations
-# - Method signatures
-# - Return types
-# - Import/export correctness
-```
+✅ Exit 0 — No type errors
 
-### Build Process Validation
-
-```bash
 $ npm run build
-# Validates:
-# - TypeScript compilation
-# - Vite bundling
-# - Output file generation
-# - No runtime errors in module resolution
+✅ Exit 0 — Clean build
 ```
 
-### Manual Testing Checklist
+### Wake Queue Implementation
+**File**: `agent-bus.ts:697-760` (`enqueueWake`, `processWakeQueue`, `getWakeQueueStats`)
 
-**Pre-requisites:**
-- Get a Gemini API key from Google AI Studio
-- Either set `GEMINI_API_KEY` env var or use UI
+**Backpressure Mechanism**:
+- Max concurrent wakes: 10 (configurable)
+- Queue limit: 50 (configurable)
+- FIFO queue with overflow handling (oldest dropped, emits wake-failure)
+- Slot tracking: `activeWakes` incremented/decremented with finally blocks
+- Queue processing: Automatic dequeue when slots free up
 
-**Test cases:**
+**Event Emission**:
+- Backpressure event on enqueue (line 720-726)
+- Failure event on queue overflow (line 711-717)
+- All paths emit events via `emitWakeEvent()` (lines 690-694)
 
-1. **Provider Registration**
-   - [ ] Gemini appears in provider list
-   - [ ] Shows unavailable without key
-   - [ ] Shows available with key
+---
 
-2. **Message Sending (Non-Stream)**
-   - [ ] Send simple message
-   - [ ] Receive response
-   - [ ] No errors in console
+## Gap Analysis: None Found
 
-3. **Message Sending (Stream)**
-   - [ ] Send longer message
-   - [ ] See chunks arrive progressively
-   - [ ] Complete message appears
-   - [ ] No errors in console
+**Original Concern**: "Ensure every bot-initiated wake goes through enqueueWake/backpressure"
 
-4. **Error Handling**
-   - [ ] Invalid API key shows error
-   - [ ] Network failure handled gracefully
-   - [ ] Empty response handled
+**Audit Result**: All paths matching the semantic definition of "bot-initiated wake" already enforce backpressure:
+1. ✅ Mention-based wakes (both streaming and non-streaming)
+2. ✅ Explicit `requestAgentWake()` API
+3. ✅ DM wakes (handled by mention paths)
+4. ✅ Room targeted wakes (mention-based in room context)
 
-5. **Secret Management**
-   - [ ] Can enter key via UI
-   - [ ] Provider becomes available
-   - [ ] Key persists across restarts
-   - [ ] Can clear key
-   - [ ] Provider becomes unavailable
+**Non-Wake Paths** (intentionally outside scope):
+- Room broadcast messages without @mentions (not targeted, not wakes)
+- Direct `sendMessage()` calls (synchronous message delivery, not wake semantics)
 
-## Integration Points
+---
 
-### Files Modified
+## Recommendation: Audit-Only PR
 
-1. **src/main/providers/gemini-provider.ts** (NEW)
-   - Provider implementation
-   - ~220 lines
-   - Implements AgentProvider interface
+**Rationale**:
+- PR #38 completed the wake hardening work
+- All true wake paths enforce backpressure, membership, error signaling, and slot cleanup
+- No additional code changes needed
+- Room broadcasts are architecturally distinct and correctly implemented
 
-2. **src/main/main.ts**
-   - Added import: `import { GeminiProvider } from './providers/gemini-provider';`
-   - Added to providers array: `new GeminiProvider()`
+**Deliverables**:
+1. ✅ This NOTES.md document
+2. ✅ AUDIT.md with detailed path-by-path analysis
+3. ✅ Clean typecheck + build verification
+4. Draft PR documenting audit findings
 
-3. **src/main/agent-bus.ts**
-   - Added to `providerHasSecret()` method
-   - Checks both stored secret and env var
+**PR Title**: `feat(bus): bot-initiated wake reliability audit`  
+**PR Body**: Reference audit documents, confirm all wake paths compliant after PR #38
 
-### No Changes Required To
+---
 
-- Renderer code (UI automatically picks up new provider)
-- IPC handlers (existing handlers work)
-- Secret management (existing system works)
-- Type definitions (AgentProvider interface unchanged)
+## Alternative: Minimal Gap-Fill PR
 
-## Future Enhancements
+If task requires closing the room broadcast "gap" (unlikely):
 
-### Optional Improvements (Out of Scope)
+**Changes Needed**:
+1. Wrap non-mention room sends in wake semantics
+2. Add `enqueueWake()` calls for sender-initiated broadcasts
+3. Emit wake events for broadcast failures
+4. Update room handlers: `send-room-message` (lines 469-495), `send-room-message-stream` (lines 552-594)
 
-1. **Function Calling**
-   - Gemini supports tools/function calling
-   - Would require extending AgentProvider interface
-   - Coordinated change across all providers
+**Risk**: May conflict with PR #39 (membership-safe broadcast polish)  
+**Complexity**: Medium — needs careful coordination with broadcast semantics
 
-2. **Model Selection UI**
-   - Allow users to choose model per agent
-   - Would require UI changes
-   - Provider already supports via config
+**Not Recommended**: Would be inventing chrome for non-wake paths.
 
-3. **Token Usage Tracking**
-   - Response includes `usage` object
-   - Could display token counts
-   - Would require UI changes
+---
 
-4. **Multi-modal Support**
-   - Gemini supports images
-   - Would require file upload handling
-   - Message format extension needed
+## Conclusion
 
-5. **Caching**
-   - Gemini supports context caching
-   - Could improve performance
-   - Requires cache management logic
+**All bot-initiated wake entry points are compliant with the task's reliability invariants after PR #38.**
 
-## References
-
-- **Google Gemini API Docs:** https://ai.google.dev/gemini-api/docs
-- **OpenAI Compatibility:** https://ai.google.dev/gemini-api/docs/openai
-- **BotOS PROVIDERS.md:** /workspace/PROVIDERS.md
-- **OpenAI Provider:** /workspace/src/main/providers/openai-provider.ts
-- **Anthropic Provider:** /workspace/src/main/providers/anthropic-provider.ts
-
-## Verification Commands
-
-```bash
-# Type checking
-npm run type-check
-
-# Build
-npm run build
-
-# Run app (requires valid API key for testing)
-export GEMINI_API_KEY=your_key_here
-npm start
-
-# Check for the provider in logs
-npm start | grep -i gemini
-```
+No code changes needed. Ship audit documentation as evidence.
