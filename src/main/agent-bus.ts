@@ -89,7 +89,12 @@ export class AgentBus {
   private wakeQueueLimit: number;
   private onWakeEvent?: WakeEventCallback;
   private activeWakes: number = 0;
-  private wakeQueue: Array<{ fn: () => Promise<void>; targetAgentId: string }> = [];
+  private wakeQueue: Array<{ 
+    fn: () => Promise<void>; 
+    targetAgentId: string; 
+    resolve: () => void; 
+    reject: (err: Error) => void;
+  }> = [];
 
   constructor(config: AgentBusConfig) {
     this.providers = new Map(config.providers.map((p) => [p.id, p]));
@@ -152,7 +157,27 @@ export class AgentBus {
     const wokeAgents = mentionedAgentIds.filter((id) => id !== agentId);
 
     if (wokeAgents.length > 0 && onWakeResponse) {
+      const roomId = context?.room as string | undefined || context?.roomId as string | undefined;
+      
       wokeAgents.forEach((wokeAgentId) => {
+        if (roomId) {
+          const { RoomManager } = require('./rooms');
+          const roomManagerInstance = global.roomManager as InstanceType<typeof RoomManager> | undefined;
+          if (roomManagerInstance) {
+            const room = roomManagerInstance.getRoom(roomId);
+            if (room && !room.memberAgentIds.includes(wokeAgentId)) {
+              this.emitWakeEvent({
+                roomId,
+                initiatorAgentId: agentId,
+                targetAgentId: wokeAgentId,
+                denialReason: 'target-not-member',
+                timestamp: Date.now(),
+              });
+              return;
+            }
+          }
+        }
+        
         const wakeFn = async () => {
           try {
             const wakeMsg = await this.wakeAgent(wokeAgentId, message, agentId);
@@ -221,7 +246,27 @@ export class AgentBus {
     const wokeAgents = mentionedAgentIds.filter((id) => id !== agentId);
 
     if (wokeAgents.length > 0 && onWakeChunk) {
+      const roomId = context?.room as string | undefined || context?.roomId as string | undefined;
+      
       wokeAgents.forEach((wokeAgentId) => {
+        if (roomId) {
+          const { RoomManager } = require('./rooms');
+          const roomManagerInstance = global.roomManager as InstanceType<typeof RoomManager> | undefined;
+          if (roomManagerInstance) {
+            const room = roomManagerInstance.getRoom(roomId);
+            if (room && !room.memberAgentIds.includes(wokeAgentId)) {
+              this.emitWakeEvent({
+                roomId,
+                initiatorAgentId: agentId,
+                targetAgentId: wokeAgentId,
+                denialReason: 'target-not-member',
+                timestamp: Date.now(),
+              });
+              return;
+            }
+          }
+        }
+        
         const wakeFn = async () => {
           try {
             await this.wakeAgentStream(wokeAgentId, message, agentId, onWakeChunk);
@@ -379,46 +424,51 @@ export class AgentBus {
       }
     }
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => {
-        this.emitWakeEvent({
-          roomId,
-          initiatorAgentId,
-          targetAgentId,
-          timeoutMs: 5000,
-          timestamp: Date.now(),
-        });
-        reject(new Error('Wake timeout'));
-      }, 5000)
-    );
-
     const wakeContext = `Bot-initiated wake from agent ${initiatorAgentId}: ${message}`;
-    const wakePromise = this._wakeAgentInternal(targetAgentId, wakeContext, initiatorAgentId);
+    
+    const wakeFn = async () => {
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          this.emitWakeEvent({
+            roomId,
+            initiatorAgentId,
+            targetAgentId,
+            timeoutMs: 5000,
+            timestamp: Date.now(),
+          });
+          reject(new Error('Wake timeout'));
+        }, 5000)
+      );
 
-    try {
-      await Promise.race([wakePromise, timeoutPromise]);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      if (!errorMessage.includes('Wake timeout')) {
-        let reason: WakeFailureReason = 'general-error';
-        if (errorMessage.includes('not found')) {
-          reason = 'agent-not-found';
-        } else if (errorMessage.includes('Provider not found')) {
-          reason = 'provider-not-found';
-        } else if (errorMessage.includes('not available')) {
-          reason = 'provider-unavailable';
+      const wakePromise = this._wakeAgentInternal(targetAgentId, wakeContext, initiatorAgentId);
+
+      try {
+        await Promise.race([wakePromise, timeoutPromise]);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        if (!errorMessage.includes('Wake timeout')) {
+          let reason: WakeFailureReason = 'general-error';
+          if (errorMessage.includes('not found')) {
+            reason = 'agent-not-found';
+          } else if (errorMessage.includes('Provider not found')) {
+            reason = 'provider-not-found';
+          } else if (errorMessage.includes('not available')) {
+            reason = 'provider-unavailable';
+          }
+          this.emitWakeEvent({
+            roomId,
+            initiatorAgentId,
+            targetAgentId,
+            reason,
+            errorMessage,
+            timestamp: Date.now(),
+          });
         }
-        this.emitWakeEvent({
-          roomId,
-          initiatorAgentId,
-          targetAgentId,
-          reason,
-          errorMessage,
-          timestamp: Date.now(),
-        });
+        throw err;
       }
-      throw err;
-    }
+    };
+
+    await this.enqueueWake(targetAgentId, wakeFn);
   }
 
   private extractMentions(message: string): string[] {
@@ -609,24 +659,27 @@ export class AgentBus {
         this.processWakeQueue();
       }
     } else {
-      if (this.wakeQueue.length >= this.wakeQueueLimit) {
-        const droppedWake = this.wakeQueue.shift();
-        if (droppedWake) {
-          this.emitWakeEvent({
-            targetAgentId: droppedWake.targetAgentId,
-            reason: 'general-error',
-            errorMessage: `Wake queue full (limit: ${this.wakeQueueLimit}), oldest wake dropped`,
-            timestamp: Date.now(),
-          });
+      return new Promise<void>((resolve, reject) => {
+        if (this.wakeQueue.length >= this.wakeQueueLimit) {
+          const droppedWake = this.wakeQueue.shift();
+          if (droppedWake) {
+            droppedWake.reject(new Error(`Wake queue full (limit: ${this.wakeQueueLimit}), oldest wake dropped`));
+            this.emitWakeEvent({
+              targetAgentId: droppedWake.targetAgentId,
+              reason: 'general-error',
+              errorMessage: `Wake queue full (limit: ${this.wakeQueueLimit}), oldest wake dropped`,
+              timestamp: Date.now(),
+            });
+          }
         }
-      }
-      this.wakeQueue.push({ fn: wakeFn, targetAgentId });
-      this.emitWakeEvent({
-        targetAgentId,
-        queuePosition: this.wakeQueue.length,
-        queueLength: this.wakeQueue.length,
-        activeWakes: this.activeWakes,
-        timestamp: Date.now(),
+        this.wakeQueue.push({ fn: wakeFn, targetAgentId, resolve, reject });
+        this.emitWakeEvent({
+          targetAgentId,
+          queuePosition: this.wakeQueue.length,
+          queueLength: this.wakeQueue.length,
+          activeWakes: this.activeWakes,
+          timestamp: Date.now(),
+        });
       });
     }
   }
@@ -637,8 +690,12 @@ export class AgentBus {
       if (next) {
         this.activeWakes++;
         next.fn()
+          .then(() => {
+            next.resolve();
+          })
           .catch((err) => {
             console.error(`Queued wake failed for agent ${next.targetAgentId}:`, err);
+            next.reject(err);
           })
           .finally(() => {
             this.activeWakes--;
