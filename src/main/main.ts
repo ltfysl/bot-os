@@ -584,11 +584,18 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
       const agent = agentBus.getAgent(senderId);
       if (agent) {
         const messageId = `${Date.now()}-${senderId}`;
+        let accumulatedContent = '';
         agentBus.sendMessageWithWakeStream(
           content,
           senderId,
           { room: roomId },
           (streamAgentId, chunk, done, wakeId) => {
+            if (!done) {
+              accumulatedContent += chunk;
+            } else if (chunk) {
+              accumulatedContent = chunk;
+            }
+
             event.sender.send('room-stream-chunk', {
               id: messageId,
               roomId,
@@ -601,11 +608,10 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
             });
 
             if (done) {
-              const fullContent = chunk;
               const assistantMessage = {
                 id: messageId,
                 roomId,
-                content: fullContent,
+                content: accumulatedContent,
                 role: 'assistant' as const,
                 timestamp: Date.now(),
                 agentId: senderId,
@@ -624,6 +630,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
   }
 
   const streamTargets = mentionedAgentIds.map((agentId) => ({ agentId, message: content }));
+  const accumulatedByWake = new Map<string, string>();
   void agentBus
     .enqueueOrderedWakes(
       streamTargets,
@@ -632,6 +639,16 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
       (wakeId, agentId, chunk, done) => {
         const agent = agentBus.getAgent(agentId);
         const messageId = `${wakeId}`;
+        const prev = accumulatedByWake.get(wakeId) || '';
+        // Accumulate deltas; if done brings full text use it, if done is empty keep acc (#32-class).
+        let next = prev;
+        if (!done) {
+          next = prev + chunk;
+        } else if (chunk) {
+          next = chunk;
+        }
+        accumulatedByWake.set(wakeId, next);
+
         event.sender.send('room-stream-chunk', {
           id: messageId,
           roomId,
@@ -644,10 +661,12 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
         });
 
         if (done) {
+          const fullContent = accumulatedByWake.get(wakeId) || '';
+          accumulatedByWake.delete(wakeId);
           const assistantMessage = {
             id: messageId,
             roomId,
-            content: chunk,
+            content: fullContent,
             role: 'assistant' as const,
             timestamp: Date.now(),
             agentId,

@@ -21,3 +21,7 @@ type-check + build green on tip after this commit.
 - `send-room-message` + `send-room-message-stream` mention fan-out now use `enqueueOrderedWakes` (sequential; membership skip emits `wake-order-skip`).
 - Nested mention wakes suppressed via `skipWakeFanOut` during ordered room primary sends.
 - Soft: skip reason default `general-error` (not `agent-not-found`).
+
+
+## Remy: stream accumulate
+- Ordered room-stream + no-mention room-stream persist accumulated text (done+empty chunk keeps acc; done+full chunk replaces).
