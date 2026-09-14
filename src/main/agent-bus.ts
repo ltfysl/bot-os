@@ -163,18 +163,39 @@ export class AgentBus {
         if (roomId) {
           const { RoomManager } = require('./rooms');
           const roomManagerInstance = global.roomManager as InstanceType<typeof RoomManager> | undefined;
-          if (roomManagerInstance) {
-            const room = roomManagerInstance.getRoom(roomId);
-            if (room && !room.memberAgentIds.includes(wokeAgentId)) {
-              this.emitWakeEvent({
-                roomId,
-                initiatorAgentId: agentId,
-                targetAgentId: wokeAgentId,
-                denialReason: 'target-not-member',
-                timestamp: Date.now(),
-              });
-              return;
-            }
+          
+          if (!roomManagerInstance) {
+            this.emitWakeEvent({
+              roomId,
+              initiatorAgentId: agentId,
+              targetAgentId: wokeAgentId,
+              denialReason: 'target-not-member',
+              timestamp: Date.now(),
+            });
+            return;
+          }
+          
+          const room = roomManagerInstance.getRoom(roomId);
+          if (!room) {
+            this.emitWakeEvent({
+              roomId,
+              initiatorAgentId: agentId,
+              targetAgentId: wokeAgentId,
+              denialReason: 'target-not-member',
+              timestamp: Date.now(),
+            });
+            return;
+          }
+          
+          if (!room.memberAgentIds.includes(wokeAgentId)) {
+            this.emitWakeEvent({
+              roomId,
+              initiatorAgentId: agentId,
+              targetAgentId: wokeAgentId,
+              denialReason: 'target-not-member',
+              timestamp: Date.now(),
+            });
+            return;
           }
         }
         
@@ -196,6 +217,7 @@ export class AgentBus {
               reason = 'provider-unavailable';
             }
             this.emitWakeEvent({
+              roomId: context?.room as string | undefined || context?.roomId as string | undefined,
               targetAgentId: wokeAgentId,
               initiatorAgentId: agentId,
               reason,
@@ -252,18 +274,39 @@ export class AgentBus {
         if (roomId) {
           const { RoomManager } = require('./rooms');
           const roomManagerInstance = global.roomManager as InstanceType<typeof RoomManager> | undefined;
-          if (roomManagerInstance) {
-            const room = roomManagerInstance.getRoom(roomId);
-            if (room && !room.memberAgentIds.includes(wokeAgentId)) {
-              this.emitWakeEvent({
-                roomId,
-                initiatorAgentId: agentId,
-                targetAgentId: wokeAgentId,
-                denialReason: 'target-not-member',
-                timestamp: Date.now(),
-              });
-              return;
-            }
+          
+          if (!roomManagerInstance) {
+            this.emitWakeEvent({
+              roomId,
+              initiatorAgentId: agentId,
+              targetAgentId: wokeAgentId,
+              denialReason: 'target-not-member',
+              timestamp: Date.now(),
+            });
+            return;
+          }
+          
+          const room = roomManagerInstance.getRoom(roomId);
+          if (!room) {
+            this.emitWakeEvent({
+              roomId,
+              initiatorAgentId: agentId,
+              targetAgentId: wokeAgentId,
+              denialReason: 'target-not-member',
+              timestamp: Date.now(),
+            });
+            return;
+          }
+          
+          if (!room.memberAgentIds.includes(wokeAgentId)) {
+            this.emitWakeEvent({
+              roomId,
+              initiatorAgentId: agentId,
+              targetAgentId: wokeAgentId,
+              denialReason: 'target-not-member',
+              timestamp: Date.now(),
+            });
+            return;
           }
         }
         
@@ -284,6 +327,7 @@ export class AgentBus {
               reason = 'provider-unavailable';
             }
             this.emitWakeEvent({
+              roomId: context?.room as string | undefined || context?.roomId as string | undefined,
               targetAgentId: wokeAgentId,
               initiatorAgentId: agentId,
               reason,

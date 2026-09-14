@@ -30,18 +30,24 @@ Wire streaming wake / fan-in paths to the same wake queue + backpressure from #3
    - Now respects `maxConcurrentWakes` limit (default: 10)
    - Emits `wake-backpressure` when queued (via `enqueueWake`)
 
-3. **Added membership checks BEFORE enqueueing** 
-   - **Streaming wakes** (lines 234-250): Check room membership before calling `enqueueWake`
-   - **Non-streaming wakes** (lines 165-181): Check room membership before calling `enqueueWake`
+3. **Added fail-closed membership checks BEFORE enqueueing** (FIXED @ commit 2)
+   - **Streaming wakes** (lines 270-338): Fail-closed room membership validation
+   - **Non-streaming wakes** (lines 159-227): Fail-closed room membership validation
    - Extract `roomId` from `context.room` or `context.roomId`
-   - Emit `wake-membership-denied` and skip enqueueing if target not a member
-   - No wasted queue slots on non-members
+   - **Fail-closed behavior when roomId is set**:
+     - If `!roomManagerInstance` → emit `wake-membership-denied`, return (no wake)
+     - If `!room` (room not found) → emit `wake-membership-denied`, return (no wake)
+     - If target not in `room.memberAgentIds` → emit `wake-membership-denied`, return (no wake)
+     - Only proceed to enqueue when room exists AND target is member
+   - Mirrors strict behavior from `requestAgentWake` (which throws on missing room/manager)
+   - No wasted queue slots on non-members or missing rooms
 
 4. **Stream error handling verified**
    - `enqueueWake` has try/finally (lines 612-618) that always decrements `activeWakes`
    - Stream errors/timeouts caught in `wakeFn` try/catch (lines 230-291)
    - Slots are properly released on stream abort/error
    - `processWakeQueue` continues draining queue after failures
+   - Error events now include `roomId` when available
 
 ---
 
@@ -73,21 +79,44 @@ Wire streaming wake / fan-in paths to the same wake queue + backpressure from #3
 - Fire-and-forget paths (mention wakes) don't await the promise
 - Blocking paths (`requestAgentWake`) await the promise
 
-### Membership Check Flow
+### Membership Check Flow (Fail-Closed)
 
 ```typescript
 // Extract roomId from context
 const roomId = context?.room || context?.roomId;
 
-// Before enqueueing
-if (roomId && room && !room.memberAgentIds.includes(targetAgentId)) {
-  emitWakeEvent({ ..., denialReason: 'target-not-member' });
-  return; // Skip this wake entirely
+// Fail-closed when roomId is set
+if (roomId) {
+  const roomManagerInstance = global.roomManager;
+  
+  // FAIL: Room manager not initialized
+  if (!roomManagerInstance) {
+    emitWakeEvent({ roomId, ..., denialReason: 'target-not-member' });
+    return; // NO WAKE
+  }
+  
+  const room = roomManagerInstance.getRoom(roomId);
+  
+  // FAIL: Room not found
+  if (!room) {
+    emitWakeEvent({ roomId, ..., denialReason: 'target-not-member' });
+    return; // NO WAKE
+  }
+  
+  // FAIL: Target not a member
+  if (!room.memberAgentIds.includes(targetAgentId)) {
+    emitWakeEvent({ roomId, ..., denialReason: 'target-not-member' });
+    return; // NO WAKE
+  }
+  
+  // PASS: Room exists AND target is member → proceed
 }
 
-// Only queue if membership check passes
+// Only queue if all checks pass
 enqueueWake(targetAgentId, wakeFn);
 ```
+
+**Key behavior**: When `roomId` is set, ANY failure (missing manager, missing room, non-member) blocks the wake and emits `wake-membership-denied`. This mirrors the strict behavior in `requestAgentWake` which throws on missing room/manager.
 
 ### Error Propagation
 
@@ -179,6 +208,23 @@ await window.electronAPI.sendRoomMessageStream(
 );
 // Expected: wake-membership-denied event immediately (no queue slot wasted)
 ```
+
+**Fail-closed smoke tests**:
+
+1. **Missing room manager** (simulated failure):
+   - Temporarily set `global.roomManager = undefined`
+   - Send room message with mention
+   - Expected: `wake-membership-denied` with `roomId` set, no wake executed
+
+2. **Missing room** (room not found):
+   - Send message to non-existent `roomId`
+   - Expected: `wake-membership-denied` with `roomId` set, no wake executed
+
+3. **Non-member target**:
+   - Mention agent not in room's `memberAgentIds`
+   - Expected: `wake-membership-denied` with `roomId` set, no wake executed
+
+All three cases should emit denial event and return early (no `enqueueWake` call).
 
 ### Test 3: Stream error slot release
 
