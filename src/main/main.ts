@@ -95,6 +95,17 @@ app.whenReady().then(async () => {
           roomId: event.roomId,
           timestamp: event.timestamp,
         });
+      } else if ('kind' in event && event.kind === 'order-skip') {
+        mainWindow.webContents.send('wake-order-skip', {
+          wakeId: event.wakeId,
+          roomId: event.roomId,
+          initiatorAgentId: event.initiatorAgentId,
+          targetAgentId: event.targetAgentId,
+          reason: event.reason,
+          errorMessage: event.errorMessage,
+          timestamp: event.timestamp,
+          orderPosition: event.orderPosition,
+        });
       } else if ('reason' in event && event.reason === 'timeout') {
         mainWindow.webContents.send('wake-timeout', {
           roomId: event.roomId,

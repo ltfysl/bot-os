@@ -53,7 +53,19 @@ export interface WakeStartedEvent {
   timestamp: number;
 }
 
-export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent) => void;
+export interface WakeOrderSkipEvent {
+  kind: 'order-skip';
+  wakeId: string;
+  roomId?: string;
+  initiatorAgentId?: string;
+  targetAgentId: string;
+  reason: 'membership-denied' | 'agent-not-found' | 'timeout';
+  errorMessage: string;
+  timestamp: number;
+  orderPosition: number;
+}
+
+export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent) => void;
 
 export interface AgentProvider {
   id: string;
@@ -120,6 +132,7 @@ export class AgentBus {
     roomId?: string;
     cancelled: boolean;
   }> = new Map();
+  private wakeIdCounter: number = 0;
 
   constructor(config: AgentBusConfig) {
     this.providers = new Map(config.providers.map((p) => [p.id, p]));
@@ -838,7 +851,7 @@ export class AgentBus {
     return false;
   }
 
-  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent): void {
+  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent): void {
     if (this.onWakeEvent) {
       this.onWakeEvent(event);
     }
@@ -929,6 +942,139 @@ export class AgentBus {
       queueLimit: this.wakeQueueLimit,
       maxConcurrent: this.maxConcurrentWakes,
     };
+  }
+
+
+  private generateWakeId(targetAgentId: string, initiatorAgentId?: string, roomId?: string): string {
+    const counter = this.wakeIdCounter++;
+    const parts = ['wake', String(Date.now()), String(counter), targetAgentId];
+    if (initiatorAgentId) parts.push(initiatorAgentId);
+    if (roomId) parts.push(roomId);
+    return parts.join('-');
+  }
+
+  async enqueueOrderedWakes(
+    targets: Array<{ agentId: string; message: string }>,
+    initiatorAgentId?: string,
+    roomId?: string,
+    onChunk?: (wakeId: string, agentId: string, chunk: string, done: boolean) => void
+  ): Promise<void> {
+    for (let orderPosition = 0; orderPosition < targets.length; orderPosition++) {
+      const target = targets[orderPosition];
+      const wakeId = this.generateWakeId(target.agentId, initiatorAgentId, roomId);
+
+      const emitSkip = (reason: WakeOrderSkipEvent['reason'], errorMessage: string) => {
+        this.emitWakeEvent({
+          kind: 'order-skip',
+          wakeId,
+          roomId,
+          initiatorAgentId,
+          targetAgentId: target.agentId,
+          reason,
+          errorMessage,
+          timestamp: Date.now(),
+          orderPosition,
+        });
+      };
+
+      try {
+        if (roomId) {
+          const { RoomManager } = require('./rooms');
+          const roomManagerInstance = global.roomManager as InstanceType<typeof RoomManager> | undefined;
+
+          if (!roomManagerInstance) {
+            this.emitWakeEvent({
+              roomId,
+              initiatorAgentId: initiatorAgentId || 'system',
+              targetAgentId: target.agentId,
+              denialReason: 'target-not-member',
+              timestamp: Date.now(),
+            });
+            emitSkip('membership-denied', 'Room manager not initialized');
+            continue;
+          }
+
+          const room = roomManagerInstance.getRoom(roomId);
+          if (!room) {
+            this.emitWakeEvent({
+              roomId,
+              initiatorAgentId: initiatorAgentId || 'system',
+              targetAgentId: target.agentId,
+              denialReason: 'target-not-member',
+              timestamp: Date.now(),
+            });
+            emitSkip('membership-denied', `Room not found: ${roomId}`);
+            continue;
+          }
+
+          if (!room.memberAgentIds.includes(target.agentId)) {
+            this.emitWakeEvent({
+              roomId,
+              initiatorAgentId: initiatorAgentId || 'system',
+              targetAgentId: target.agentId,
+              denialReason: 'target-not-member',
+              timestamp: Date.now(),
+            });
+            emitSkip('membership-denied', `Target agent ${target.agentId} is not a member of room ${roomId}`);
+            continue;
+          }
+        }
+
+        this.activeWakeIds.set(wakeId, {
+          targetAgentId: target.agentId,
+          initiatorAgentId,
+          roomId,
+          cancelled: false,
+        });
+        this.emitWakeEvent({
+          kind: 'started',
+          wakeId,
+          targetAgentId: target.agentId,
+          initiatorAgentId,
+          roomId,
+          timestamp: Date.now(),
+        });
+
+        await this.enqueueWake(
+          target.agentId,
+          async () => {
+            try {
+              if (onChunk) {
+                await this.wakeAgentStream(
+                  target.agentId,
+                  target.message,
+                  initiatorAgentId || 'system',
+                  (agentId, chunk, done) => {
+                    onChunk(wakeId, agentId, chunk, done);
+                  },
+                  wakeId
+                );
+              } else {
+                await this.wakeAgent(target.agentId, target.message, initiatorAgentId || 'system', wakeId);
+              }
+            } finally {
+              this.activeWakeIds.delete(wakeId);
+            }
+          },
+          wakeId,
+          initiatorAgentId,
+          roomId
+        );
+      } catch (err) {
+        console.error(`Ordered wake failed for ${target.agentId} (position ${orderPosition}):`, err);
+        this.activeWakeIds.delete(wakeId);
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        let reason: WakeOrderSkipEvent['reason'] = 'agent-not-found';
+        if (errorMessage.includes('timeout') || errorMessage.includes('Wake timeout')) {
+          reason = 'timeout';
+        } else if (errorMessage.includes('not found')) {
+          reason = 'agent-not-found';
+        } else if (errorMessage.includes('member')) {
+          reason = 'membership-denied';
+        }
+        emitSkip(reason, errorMessage);
+      }
+    }
   }
 
   cancelWake(wakeId: string): { cancelled: boolean; wasActive: boolean; wasQueued: boolean } {
