@@ -36,6 +36,7 @@ export interface WakeBackpressureEvent {
 }
 
 export interface WakeCancelledEvent {
+  kind: 'cancelled';
   wakeId: string;
   targetAgentId: string;
   initiatorAgentId?: string | undefined;
@@ -43,7 +44,16 @@ export interface WakeCancelledEvent {
   timestamp: number;
 }
 
-export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent) => void;
+export interface WakeStartedEvent {
+  kind: 'started';
+  wakeId: string;
+  targetAgentId: string;
+  initiatorAgentId?: string | undefined;
+  roomId?: string | undefined;
+  timestamp: number;
+}
+
+export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent) => void;
 
 export interface AgentProvider {
   id: string;
@@ -221,6 +231,14 @@ export class AgentBus {
           roomId,
           cancelled: false,
         });
+        this.emitWakeEvent({
+          kind: 'started',
+          wakeId,
+          targetAgentId: wokeAgentId,
+          initiatorAgentId: agentId,
+          roomId,
+          timestamp: Date.now(),
+        });
         
         const wakeFn = async () => {
           try {
@@ -265,7 +283,7 @@ export class AgentBus {
     agentId: string,
     context: Record<string, unknown> | undefined,
     onPrimaryChunk: (agentId: string, chunk: string, done: boolean) => void,
-    onWakeChunk?: (wokeAgentId: string, chunk: string, done: boolean) => void
+    onWakeChunk?: (wokeAgentId: string, chunk: string, done: boolean, wakeId?: string) => void
   ): Promise<void> {
     const primaryAgent = this.agents.get(agentId);
     if (!primaryAgent) {
@@ -344,6 +362,14 @@ export class AgentBus {
           roomId,
           cancelled: false,
         });
+        this.emitWakeEvent({
+          kind: 'started',
+          wakeId,
+          targetAgentId: wokeAgentId,
+          initiatorAgentId: agentId,
+          roomId,
+          timestamp: Date.now(),
+        });
         
         const wakeFn = async () => {
           try {
@@ -384,7 +410,7 @@ export class AgentBus {
     wokeAgentId: string,
     originalMessage: string,
     wakerId: string,
-    onChunk: (wokeAgentId: string, chunk: string, done: boolean) => void,
+    onChunk: (wokeAgentId: string, chunk: string, done: boolean, wakeId?: string) => void,
     wakeId?: string
   ): Promise<void> {
     const timeoutPromise = new Promise<never>((_, reject) =>
@@ -408,7 +434,7 @@ export class AgentBus {
     wokeAgentId: string,
     originalMessage: string,
     wakerId: string,
-    onChunk: (wokeAgentId: string, chunk: string, done: boolean) => void,
+    onChunk: (wokeAgentId: string, chunk: string, done: boolean, wakeId?: string) => void,
     wakeId?: string
   ): Promise<void> {
     const wokeAgent = this.agents.get(wokeAgentId);
@@ -436,7 +462,7 @@ export class AgentBus {
             throw new Error('Wake cancelled');
           }
         }
-        onChunk(wokeAgentId, chunk, done);
+        onChunk(wokeAgentId, chunk, done, wakeId);
       });
     } else {
       if (wakeId) {
@@ -446,7 +472,7 @@ export class AgentBus {
         }
       }
       const response = await provider.sendMessage(wakeContext, { wake: true });
-      onChunk(wokeAgentId, response, true);
+      onChunk(wokeAgentId, response, true, wakeId);
     }
   }
 
@@ -455,7 +481,7 @@ export class AgentBus {
     targetAgentId: string,
     message: string,
     roomId?: string
-  ): Promise<void> {
+  ): Promise<{ wakeId: string }> {
     const initiator = this.agents.get(initiatorAgentId);
     if (!initiator) {
       const error = new Error(`Initiator agent not found: ${initiatorAgentId}`);
@@ -530,6 +556,14 @@ export class AgentBus {
       roomId,
       cancelled: false,
     });
+    this.emitWakeEvent({
+      kind: 'started',
+      wakeId,
+      targetAgentId,
+      initiatorAgentId,
+      roomId,
+      timestamp: Date.now(),
+    });
     
     const wakeFn = async () => {
       const timeoutPromise = new Promise<never>((_, reject) =>
@@ -578,6 +612,7 @@ export class AgentBus {
     };
 
     await this.enqueueWake(targetAgentId, wakeFn, wakeId, initiatorAgentId, roomId);
+    return { wakeId };
   }
 
   private extractMentions(message: string): string[] {
@@ -768,7 +803,7 @@ export class AgentBus {
     return false;
   }
 
-  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent): void {
+  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent): void {
     if (this.onWakeEvent) {
       this.onWakeEvent(event);
     }
@@ -783,6 +818,14 @@ export class AgentBus {
         initiatorAgentId,
         roomId,
         cancelled: false,
+      });
+      this.emitWakeEvent({
+        kind: 'started',
+        wakeId: finalWakeId,
+        targetAgentId,
+        initiatorAgentId,
+        roomId,
+        timestamp: Date.now(),
       });
     }
     
@@ -854,10 +897,32 @@ export class AgentBus {
   }
 
   cancelWake(wakeId: string): { cancelled: boolean; wasActive: boolean; wasQueued: boolean } {
+    // Queue first: wakes are pre-registered in activeWakeIds before enqueue.
+    const queueIndex = this.wakeQueue.findIndex((w) => w.wakeId === wakeId);
+    if (queueIndex !== -1) {
+      const queuedWake = this.wakeQueue.splice(queueIndex, 1)[0];
+      const activeWakeEntry = this.activeWakeIds.get(wakeId);
+      this.activeWakeIds.delete(wakeId);
+
+      const event: WakeCancelledEvent = {
+        kind: 'cancelled',
+        wakeId,
+        targetAgentId: queuedWake.targetAgentId,
+        initiatorAgentId: activeWakeEntry?.initiatorAgentId,
+        roomId: activeWakeEntry?.roomId,
+        timestamp: Date.now(),
+      };
+      this.emitWakeEvent(event);
+
+      queuedWake.reject(new Error('Wake cancelled'));
+      return { cancelled: true, wasActive: false, wasQueued: true };
+    }
+
     const activeWake = this.activeWakeIds.get(wakeId);
     if (activeWake) {
       activeWake.cancelled = true;
       const event: WakeCancelledEvent = {
+        kind: 'cancelled',
         wakeId,
         targetAgentId: activeWake.targetAgentId,
         initiatorAgentId: activeWake.initiatorAgentId,
@@ -866,25 +931,6 @@ export class AgentBus {
       };
       this.emitWakeEvent(event);
       return { cancelled: true, wasActive: true, wasQueued: false };
-    }
-
-    const queueIndex = this.wakeQueue.findIndex((w) => w.wakeId === wakeId);
-    if (queueIndex !== -1) {
-      const queuedWake = this.wakeQueue.splice(queueIndex, 1)[0];
-      const activeWakeEntry = this.activeWakeIds.get(wakeId);
-      this.activeWakeIds.delete(wakeId);
-      
-      const event: WakeCancelledEvent = {
-        wakeId,
-        targetAgentId: queuedWake.targetAgentId,
-        initiatorAgentId: activeWakeEntry?.initiatorAgentId,
-        roomId: activeWakeEntry?.roomId,
-        timestamp: Date.now(),
-      };
-      this.emitWakeEvent(event);
-      
-      queuedWake.reject(new Error('Wake cancelled'));
-      return { cancelled: true, wasActive: false, wasQueued: true };
     }
 
     return { cancelled: false, wasActive: false, wasQueued: false };

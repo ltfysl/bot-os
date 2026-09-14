@@ -181,3 +181,9 @@ npm run build
 **Semantics Documented**: Yes  
 **Builds Green**: Yes  
 **Scope Respected**: Yes (NO React/CSS chrome)
+
+
+## Remy re-walk fix (2026-09-14T08:05Z)
+- cancelWake checks **queue first** (pre-registered activeWakeIds no longer shadow queued wakes; wasQueued correct; queue entry removed).
+- wakeId reaches renderer: `wake-started` IPC on register, `wakeId` on `wake-stream-chunk`, `request-agent-wake` returns `wakeId`, `onWakeStarted` in preload/types.
+- WakeCancelledEvent/WakeStartedEvent use `kind` discriminant.

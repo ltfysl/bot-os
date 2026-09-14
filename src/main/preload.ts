@@ -19,6 +19,7 @@ export interface StreamChunk {
   chunk: string;
   done: boolean;
   targetAgentId?: string;
+  wakeId?: string;
 }
 
 export interface StreamResponse {
@@ -29,6 +30,7 @@ export interface StreamResponse {
 
 export interface WakeResult {
   success: boolean;
+  wakeId?: string;
   error?: string;
 }
 
@@ -112,6 +114,7 @@ export interface RoomStreamChunk {
   agentAvatar: string;
   chunk: string;
   done: boolean;
+  wakeId?: string;
 }
 
 export type WidgetType = 'single-select' | 'multi-select' | 'danger' | 'allow-custom';
@@ -171,6 +174,16 @@ export interface WakeBackpressureEvent {
 }
 
 export interface WakeCancelledEvent {
+  kind?: 'cancelled';
+  wakeId: string;
+  targetAgentId: string;
+  initiatorAgentId?: string;
+  roomId?: string;
+  timestamp: number;
+}
+
+export interface WakeStartedEvent {
+  kind?: 'started';
   wakeId: string;
   targetAgentId: string;
   initiatorAgentId?: string;
@@ -294,5 +307,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeCancelledEvent) => callback(wakeEvent);
     ipcRenderer.on('wake-cancelled', handler);
     return () => ipcRenderer.removeListener('wake-cancelled', handler);
+  },
+  onWakeStarted: (callback: (event: WakeStartedEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, wakeEvent: WakeStartedEvent) => callback(wakeEvent);
+    ipcRenderer.on('wake-started', handler);
+    return () => ipcRenderer.removeListener('wake-started', handler);
   },
 });
