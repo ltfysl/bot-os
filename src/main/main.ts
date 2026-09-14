@@ -116,21 +116,13 @@ app.whenReady().then(async () => {
           timestamp: event.timestamp,
         });
       } else if ('timeoutMs' in event) {
+        // Single timeout path — prefer WakeTimeoutEvent; no reason==='timeout' dual-route.
         mainWindow.webContents.send('wake-timeout', {
           wakeId: 'wakeId' in event ? event.wakeId : undefined,
           roomId: event.roomId,
           initiatorAgentId: event.initiatorAgentId,
           targetAgentId: event.targetAgentId,
           timeoutMs: event.timeoutMs,
-          timestamp: event.timestamp,
-        });
-      } else if ('reason' in event && event.reason === 'timeout') {
-        mainWindow.webContents.send('wake-timeout', {
-          wakeId: 'wakeId' in event ? event.wakeId : undefined,
-          roomId: event.roomId,
-          initiatorAgentId: event.initiatorAgentId,
-          targetAgentId: event.targetAgentId,
-          timeoutMs: 5000,
           timestamp: event.timestamp,
         });
       } else if ('denialReason' in event) {
