@@ -3,7 +3,7 @@ import { Settings, Bot } from 'lucide-react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
 import SecretRequestCard from './SecretRequestCard';
-import type { Agent, Message, ProviderInfo, WidgetRequest, StreamChunk } from '../types';
+import type { Agent, Message, ProviderInfo, WidgetRequest, StreamChunk, WakeFailureEvent, WakeTimeoutEvent, WakeMembershipDeniedEvent, WakeBackpressureEvent } from '../types';
 
 interface ChatViewProps {
   agent?: Agent;
@@ -27,6 +27,14 @@ interface StreamingMessage {
   isStreaming: boolean;
 }
 
+interface WakeErrorEvent {
+  id: string;
+  type: 'wake-failure' | 'wake-timeout' | 'wake-membership-denied';
+  reason: string;
+  agentName?: string;
+  timestamp: number;
+}
+
 export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [streamingMessage, setStreamingMessage] = useState<StreamingMessage | null>(null);
@@ -37,6 +45,8 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
   const [secretCardProvider, setSecretCardProvider] = useState<{ id: string; name: string } | null>(null);
   const [widgetRequest, setWidgetRequest] = useState<WidgetRequest | null>(null);
   const [resolvedWidgets, setResolvedWidgets] = useState<ResolvedWidget[]>([]);
+  const [wakeErrors, setWakeErrors] = useState<WakeErrorEvent[]>([]);
+  const [backpressureState, setBackpressureState] = useState<WakeBackpressureEvent | null>(null);
   const providerMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -128,6 +138,87 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
     });
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    const unsubFailure = window.electronAPI.onWakeFailure((event: WakeFailureEvent) => {
+      if (event.targetAgentId === agent?.id) {
+        const agents = JSON.parse(localStorage.getItem('agents') || '[]');
+        const targetAgent = agents.find((a: Agent) => a.id === event.targetAgentId);
+        setWakeErrors((prev) => [...prev, {
+          id: `failure-${event.timestamp}`,
+          type: 'wake-failure',
+          reason: formatWakeFailureReason(event.reason),
+          agentName: targetAgent?.name,
+          timestamp: event.timestamp,
+        }]);
+        setIsLoading(false);
+      }
+    });
+
+    const unsubTimeout = window.electronAPI.onWakeTimeout((event: WakeTimeoutEvent) => {
+      if (event.targetAgentId === agent?.id) {
+        const agents = JSON.parse(localStorage.getItem('agents') || '[]');
+        const targetAgent = agents.find((a: Agent) => a.id === event.targetAgentId);
+        setWakeErrors((prev) => [...prev, {
+          id: `timeout-${event.timestamp}`,
+          type: 'wake-timeout',
+          reason: 'Timed out',
+          agentName: targetAgent?.name,
+          timestamp: event.timestamp,
+        }]);
+        setIsLoading(false);
+      }
+    });
+
+    const unsubMembership = window.electronAPI.onWakeMembershipDenied((event: WakeMembershipDeniedEvent) => {
+      if (event.targetAgentId === agent?.id) {
+        const agents = JSON.parse(localStorage.getItem('agents') || '[]');
+        const targetAgent = agents.find((a: Agent) => a.id === event.targetAgentId);
+        setWakeErrors((prev) => [...prev, {
+          id: `membership-${event.timestamp}`,
+          type: 'wake-membership-denied',
+          reason: 'Not a member',
+          agentName: targetAgent?.name,
+          timestamp: event.timestamp,
+        }]);
+        setIsLoading(false);
+      }
+    });
+
+    const unsubBackpressure = window.electronAPI.onWakeBackpressure((event: WakeBackpressureEvent) => {
+      if (event.targetAgentId === agent?.id) {
+        setBackpressureState(event);
+      }
+    });
+
+    return () => {
+      unsubFailure();
+      unsubTimeout();
+      unsubMembership();
+      unsubBackpressure();
+    };
+  }, [agent?.id]);
+
+  const formatWakeFailureReason = (reason: string): string => {
+    switch (reason) {
+      case 'agent-not-found':
+        return 'Agent not found';
+      case 'provider-not-found':
+        return 'Provider not found';
+      case 'provider-unavailable':
+        return 'Provider unavailable';
+      case 'membership-denied':
+        return 'Not a member';
+      case 'timeout':
+        return 'Timed out';
+      default:
+        return 'Wake failed';
+    }
+  };
+
+  const handleRetryWake = async (errorId: string) => {
+    setWakeErrors((prev) => prev.filter((e) => e.id !== errorId));
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -332,6 +423,8 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
           widgetRequest={widgetRequest}
           resolvedWidgets={resolvedWidgets}
           onWidgetResolve={handleWidgetResolve}
+          wakeErrors={wakeErrors}
+          onRetryWake={handleRetryWake}
         />
       </div>
       <MessageComposer 
@@ -339,6 +432,7 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
         onStop={handleStopStreaming}
         disabled={isLoading && !streamingMessage}
         isStreaming={!!streamingMessage}
+        backpressureState={backpressureState}
       />
       
       {showSecretCard && secretCardProvider && (
