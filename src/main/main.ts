@@ -497,6 +497,17 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
   }
 
   mentionedAgentIds.forEach((agentId) => {
+    if (!room.memberAgentIds.includes(agentId)) {
+      event.sender.send('wake-membership-denied', {
+        roomId,
+        initiatorAgentId: senderId || 'system',
+        targetAgentId: agentId,
+        denialReason: 'target-not-member',
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
     const agent = agentBus.getAgent(agentId);
     if (!agent) {
       console.error(`Agent not found: ${agentId}`);
@@ -595,6 +606,17 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
   }
 
   mentionedAgentIds.forEach((agentId) => {
+    if (!room.memberAgentIds.includes(agentId)) {
+      event.sender.send('wake-membership-denied', {
+        roomId,
+        initiatorAgentId: senderId || 'system',
+        targetAgentId: agentId,
+        denialReason: 'target-not-member',
+        timestamp: Date.now(),
+      });
+      return;
+    }
+
     const agent = agentBus.getAgent(agentId);
     if (!agent) {
       console.error(`Agent not found: ${agentId}`);
