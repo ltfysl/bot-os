@@ -282,7 +282,7 @@ export class AgentBus {
     message: string,
     agentId: string,
     context: Record<string, unknown> | undefined,
-    onPrimaryChunk: (agentId: string, chunk: string, done: boolean) => void,
+    onPrimaryChunk: (agentId: string, chunk: string, done: boolean, wakeId?: string) => void,
     onWakeChunk?: (wokeAgentId: string, chunk: string, done: boolean, wakeId?: string) => void
   ): Promise<void> {
     const primaryAgent = this.agents.get(agentId);
@@ -300,21 +300,55 @@ export class AgentBus {
       throw new Error(`Provider not available: ${primaryAgent.providerId}`);
     }
 
-    if (provider.sendMessageStream) {
-      await provider.sendMessageStream(message, context, (chunk, done) => {
-        onPrimaryChunk(agentId, chunk, done);
+    const roomId = context?.room as string | undefined || context?.roomId as string | undefined;
+    // Room fan-out uses this method with the target as primary — register a wakeId so Square can cancel.
+    let primaryWakeId: string | undefined;
+    if (roomId) {
+      primaryWakeId = `wake-${Date.now()}-${agentId}-${Math.random().toString(36).slice(2, 9)}`;
+      this.activeWakeIds.set(primaryWakeId, {
+        targetAgentId: agentId,
+        initiatorAgentId: undefined,
+        roomId,
+        cancelled: false,
       });
-    } else {
-      const response = await provider.sendMessage(message, context);
-      onPrimaryChunk(agentId, response, true);
+      this.emitWakeEvent({
+        kind: 'started',
+        wakeId: primaryWakeId,
+        targetAgentId: agentId,
+        roomId,
+        timestamp: Date.now(),
+      });
+    }
+
+    const emitPrimary = (chunk: string, done: boolean) => {
+      if (primaryWakeId) {
+        const active = this.activeWakeIds.get(primaryWakeId);
+        if (active?.cancelled) {
+          throw new Error('Wake cancelled');
+        }
+      }
+      onPrimaryChunk(agentId, chunk, done, primaryWakeId);
+    };
+
+    try {
+      if (provider.sendMessageStream) {
+        await provider.sendMessageStream(message, context, (chunk, done) => {
+          emitPrimary(chunk, done);
+        });
+      } else {
+        const response = await provider.sendMessage(message, context);
+        emitPrimary(response, true);
+      }
+    } finally {
+      if (primaryWakeId) {
+        this.activeWakeIds.delete(primaryWakeId);
+      }
     }
 
     const mentionedAgentIds = this.extractMentions(message);
     const wokeAgents = mentionedAgentIds.filter((id) => id !== agentId);
 
     if (wokeAgents.length > 0 && onWakeChunk) {
-      const roomId = context?.room as string | undefined || context?.roomId as string | undefined;
-      
       wokeAgents.forEach((wokeAgentId) => {
         if (roomId) {
           const { RoomManager } = require('./rooms');
@@ -611,7 +645,8 @@ export class AgentBus {
       }
     };
 
-    await this.enqueueWake(targetAgentId, wakeFn, wakeId, initiatorAgentId, roomId);
+    // Soft (Remy): return wakeId immediately; do not await wake completion.
+    void this.enqueueWake(targetAgentId, wakeFn, wakeId, initiatorAgentId, roomId);
     return { wakeId };
   }
 

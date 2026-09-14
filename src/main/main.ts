@@ -306,7 +306,7 @@ ipcMain.handle('send-message-stream', async (event, agentId: string, message: st
     message,
     agentId,
     undefined,
-    (streamAgentId, chunk, done) => {
+    (streamAgentId, chunk, done, wakeId) => {
       event.sender.send('message-stream-chunk', {
         id: messageId,
         agentId: streamAgentId,
@@ -315,6 +315,7 @@ ipcMain.handle('send-message-stream', async (event, agentId: string, message: st
         chunk,
         done,
         targetAgentId: agentId,
+        wakeId,
       });
     },
     (wokeAgentId, chunk, done, wakeId) => {
@@ -588,7 +589,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
           content,
           senderId,
           { room: roomId },
-          (streamAgentId, chunk, done) => {
+          (streamAgentId, chunk, done, wakeId) => {
             event.sender.send('room-stream-chunk', {
               id: messageId,
               roomId,
@@ -597,6 +598,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
               agentAvatar: agent.avatar,
               chunk,
               done,
+              wakeId,
             });
 
             if (done) {
@@ -647,7 +649,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
       content,
       agentId,
       { room: roomId },
-      (streamAgentId, chunk, done) => {
+      (streamAgentId, chunk, done, wakeId) => {
         if (!done) {
           accumulatedContent += chunk;
         } else {
@@ -662,6 +664,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
           agentAvatar: agent.avatar,
           chunk,
           done,
+          wakeId,
         });
 
         if (done) {

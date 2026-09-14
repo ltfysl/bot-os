@@ -187,3 +187,8 @@ npm run build
 - cancelWake checks **queue first** (pre-registered activeWakeIds no longer shadow queued wakes; wasQueued correct; queue entry removed).
 - wakeId reaches renderer: `wake-started` IPC on register, `wakeId` on `wake-stream-chunk`, `request-agent-wake` returns `wakeId`, `onWakeStarted` in preload/types.
 - WakeCancelledEvent/WakeStartedEvent use `kind` discriminant.
+
+
+## Remy #3 fix
+- Room primary streams (fan-out via `sendMessageWithWakeStream` + room context) now register wakeId, emit `wake-started`, pass `wakeId` on `room-stream-chunk`.
+- Soft: `requestAgentWake` returns `{ wakeId }` without awaiting enqueue completion.
