@@ -114,6 +114,13 @@ export interface CancelWakeResult {
   error?: string;
 }
 
+export interface WakeBackpressureStats {
+  active: number;
+  queued: number;
+  queueLimit: number;
+  maxConcurrent: number;
+}
+
 export interface Channel {
   id: string;
   name: string;
@@ -231,6 +238,7 @@ declare global {
       onWakeResponse: (callback: (message: Message) => void) => (() => void);
       requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string) => Promise<WakeResult>;
       cancelWake: (wakeId: string) => Promise<CancelWakeResult>;
+      getWakeBackpressureStats: () => Promise<WakeBackpressureStats>;
       getChannels: () => Promise<Channel[]>;
       getAgents: () => Promise<Agent[]>;
       listProviders: () => Promise<ProviderInfo[]>;

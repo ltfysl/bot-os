@@ -220,6 +220,13 @@ export interface CancelWakeResult {
   error?: string;
 }
 
+export interface WakeBackpressureStats {
+  active: number;
+  queued: number;
+  queueLimit: number;
+  maxConcurrent: number;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   sendMessage: (agentId: string, message: string): Promise<Message> =>
     ipcRenderer.invoke('send-message', agentId, message),
@@ -249,6 +256,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('request-agent-wake', initiatorAgentId, targetAgentId, message, roomId),
   cancelWake: (wakeId: string): Promise<CancelWakeResult> =>
     ipcRenderer.invoke('cancel-wake', wakeId),
+  getWakeBackpressureStats: (): Promise<WakeBackpressureStats> =>
+    ipcRenderer.invoke('get-wake-backpressure-stats'),
   getChannels: (): Promise<Channel[]> => ipcRenderer.invoke('get-channels'),
   getAgents: (): Promise<Agent[]> => ipcRenderer.invoke('get-agents'),
   listProviders: (): Promise<ProviderInfo[]> => ipcRenderer.invoke('list-providers'),
