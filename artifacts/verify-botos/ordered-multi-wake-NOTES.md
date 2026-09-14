@@ -15,3 +15,9 @@ Original #41 diverged heavily from main after #38–#40 (wakeId/cancel). Rebased
 
 ## Build
 type-check + build green on tip after this commit.
+
+
+## Remy hard fix — wire callers
+- `send-room-message` + `send-room-message-stream` mention fan-out now use `enqueueOrderedWakes` (sequential; membership skip emits `wake-order-skip`).
+- Nested mention wakes suppressed via `skipWakeFanOut` during ordered room primary sends.
+- Soft: skip reason default `general-error` (not `agent-not-found`).

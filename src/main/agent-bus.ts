@@ -59,7 +59,7 @@ export interface WakeOrderSkipEvent {
   roomId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
-  reason: 'membership-denied' | 'agent-not-found' | 'timeout';
+  reason: 'membership-denied' | 'agent-not-found' | 'timeout' | 'general-error';
   errorMessage: string;
   timestamp: number;
   orderPosition: number;
@@ -194,7 +194,7 @@ export class AgentBus {
     const mentionedAgentIds = this.extractMentions(message);
     const wokeAgents = mentionedAgentIds.filter((id) => id !== agentId);
 
-    if (wokeAgents.length > 0 && onWakeResponse) {
+    if (wokeAgents.length > 0 && onWakeResponse && !context?.skipWakeFanOut) {
       const roomId = context?.room as string | undefined || context?.roomId as string | undefined;
       
       wokeAgents.forEach((wokeAgentId) => {
@@ -315,8 +315,9 @@ export class AgentBus {
 
     const roomId = context?.room as string | undefined || context?.roomId as string | undefined;
     // Room fan-out uses this method with the target as primary — register a wakeId so Square can cancel.
+    // Ordered fan-out (`skipWakeFanOut`) already registered its own wakeId.
     let primaryWakeId: string | undefined;
-    if (roomId) {
+    if (roomId && !context?.skipWakeFanOut) {
       primaryWakeId = `wake-${Date.now()}-${agentId}-${Math.random().toString(36).slice(2, 9)}`;
       this.activeWakeIds.set(primaryWakeId, {
         targetAgentId: agentId,
@@ -361,7 +362,7 @@ export class AgentBus {
     const mentionedAgentIds = this.extractMentions(message);
     const wokeAgents = mentionedAgentIds.filter((id) => id !== agentId);
 
-    if (wokeAgents.length > 0 && onWakeChunk) {
+    if (wokeAgents.length > 0 && onWakeChunk && !context?.skipWakeFanOut) {
       wokeAgents.forEach((wokeAgentId) => {
         if (roomId) {
           const { RoomManager } = require('./rooms');
@@ -957,7 +958,8 @@ export class AgentBus {
     targets: Array<{ agentId: string; message: string }>,
     initiatorAgentId?: string,
     roomId?: string,
-    onChunk?: (wakeId: string, agentId: string, chunk: string, done: boolean) => void
+    onChunk?: (wakeId: string, agentId: string, chunk: string, done: boolean) => void,
+    onComplete?: (wakeId: string, agentId: string, message: AgentBusMessage) => void
   ): Promise<void> {
     for (let orderPosition = 0; orderPosition < targets.length; orderPosition++) {
       const target = targets[orderPosition];
@@ -1020,6 +1022,11 @@ export class AgentBus {
           }
         }
 
+        if (!this.agents.get(target.agentId)) {
+          emitSkip('agent-not-found', `Agent not found: ${target.agentId}`);
+          continue;
+        }
+
         this.activeWakeIds.set(wakeId, {
           targetAgentId: target.agentId,
           initiatorAgentId,
@@ -1039,18 +1046,34 @@ export class AgentBus {
           target.agentId,
           async () => {
             try {
+              const active = this.activeWakeIds.get(wakeId);
+              if (active?.cancelled) {
+                throw new Error('Wake cancelled');
+              }
+
+              const context: Record<string, unknown> | undefined = roomId
+                ? { room: roomId, skipWakeFanOut: true }
+                : { skipWakeFanOut: true };
+
               if (onChunk) {
-                await this.wakeAgentStream(
-                  target.agentId,
+                // Room/stream fan-out: target is primary (not wake-from-agent context).
+                await this.sendMessageWithWakeStream(
                   target.message,
-                  initiatorAgentId || 'system',
-                  (agentId, chunk, done) => {
-                    onChunk(wakeId, agentId, chunk, done);
-                  },
-                  wakeId
+                  target.agentId,
+                  context,
+                  (_agentId, chunk, done, _primaryWakeId) => {
+                    const still = this.activeWakeIds.get(wakeId);
+                    if (still?.cancelled) {
+                      throw new Error('Wake cancelled');
+                    }
+                    onChunk(wakeId, target.agentId, chunk, done);
+                  }
                 );
               } else {
-                await this.wakeAgent(target.agentId, target.message, initiatorAgentId || 'system', wakeId);
+                const response = await this.sendMessage(target.message, target.agentId, context);
+                if (onComplete) {
+                  onComplete(wakeId, target.agentId, response);
+                }
               }
             } finally {
               this.activeWakeIds.delete(wakeId);
@@ -1064,10 +1087,10 @@ export class AgentBus {
         console.error(`Ordered wake failed for ${target.agentId} (position ${orderPosition}):`, err);
         this.activeWakeIds.delete(wakeId);
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        let reason: WakeOrderSkipEvent['reason'] = 'agent-not-found';
+        let reason: WakeOrderSkipEvent['reason'] = 'general-error';
         if (errorMessage.includes('timeout') || errorMessage.includes('Wake timeout')) {
           reason = 'timeout';
-        } else if (errorMessage.includes('not found')) {
+        } else if (errorMessage.includes('not found') || errorMessage.includes('Agent not found')) {
           reason = 'agent-not-found';
         } else if (errorMessage.includes('member')) {
           reason = 'membership-denied';

@@ -91,7 +91,7 @@ export interface WakeOrderSkipEvent {
   roomId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
-  reason: 'membership-denied' | 'agent-not-found' | 'timeout';
+  reason: 'membership-denied' | 'agent-not-found' | 'timeout' | 'general-error';
   errorMessage: string;
   timestamp: number;
   orderPosition: number;
