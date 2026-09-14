@@ -79,6 +79,14 @@ app.whenReady().then(async () => {
           activeWakes: event.activeWakes,
           timestamp: event.timestamp,
         });
+      } else if ('wakeId' in event) {
+        mainWindow.webContents.send('wake-cancelled', {
+          wakeId: event.wakeId,
+          targetAgentId: event.targetAgentId,
+          initiatorAgentId: event.initiatorAgentId,
+          roomId: event.roomId,
+          timestamp: event.timestamp,
+        });
       } else if ('reason' in event && event.reason === 'timeout') {
         mainWindow.webContents.send('wake-timeout', {
           roomId: event.roomId,
@@ -683,6 +691,24 @@ ipcMain.handle('request-agent-wake', async (_event, initiatorAgentId: string, ta
   } catch (error) {
     return { 
       success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
+});
+
+ipcMain.handle('cancel-wake', async (_event, wakeId: string) => {
+  try {
+    const result = agentBus.cancelWake(wakeId);
+    return { 
+      success: result.cancelled,
+      wasActive: result.wasActive,
+      wasQueued: result.wasQueued
+    };
+  } catch (error) {
+    return { 
+      success: false,
+      wasActive: false,
+      wasQueued: false,
       error: error instanceof Error ? error.message : 'Unknown error' 
     };
   }

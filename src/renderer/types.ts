@@ -30,7 +30,7 @@ export interface WakeResult {
   error?: string;
 }
 
-export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-found' | 'provider-not-found' | 'provider-unavailable' | 'general-error';
+export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-found' | 'provider-not-found' | 'provider-unavailable' | 'general-error' | 'cancelled';
 
 export interface WakeFailureEvent {
   roomId?: string;
@@ -63,6 +63,21 @@ export interface WakeBackpressureEvent {
   queueLength: number;
   activeWakes: number;
   timestamp: number;
+}
+
+export interface WakeCancelledEvent {
+  wakeId: string;
+  targetAgentId: string;
+  initiatorAgentId?: string;
+  roomId?: string;
+  timestamp: number;
+}
+
+export interface CancelWakeResult {
+  success: boolean;
+  wasActive: boolean;
+  wasQueued: boolean;
+  error?: string;
 }
 
 export interface Channel {
@@ -180,6 +195,7 @@ declare global {
       onMessageStreamError: (callback: (error: { id: string; agentId: string; error: string }) => void) => (() => void);
       onWakeResponse: (callback: (message: Message) => void) => (() => void);
       requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string) => Promise<WakeResult>;
+      cancelWake: (wakeId: string) => Promise<CancelWakeResult>;
       getChannels: () => Promise<Channel[]>;
       getAgents: () => Promise<Agent[]>;
       listProviders: () => Promise<ProviderInfo[]>;
@@ -210,6 +226,7 @@ declare global {
       onWakeTimeout: (callback: (event: WakeTimeoutEvent) => void) => (() => void);
       onWakeMembershipDenied: (callback: (event: WakeMembershipDeniedEvent) => void) => (() => void);
       onWakeBackpressure: (callback: (event: WakeBackpressureEvent) => void) => (() => void);
+      onWakeCancelled: (callback: (event: WakeCancelledEvent) => void) => (() => void);
     };
   }
 }

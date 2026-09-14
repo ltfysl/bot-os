@@ -1,6 +1,6 @@
 export type StreamChunkCallback = (chunk: string, done: boolean) => void;
 
-export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-found' | 'provider-not-found' | 'provider-unavailable' | 'general-error';
+export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-found' | 'provider-not-found' | 'provider-unavailable' | 'general-error' | 'cancelled';
 
 export interface WakeFailureEvent {
   roomId?: string;
@@ -35,7 +35,15 @@ export interface WakeBackpressureEvent {
   timestamp: number;
 }
 
-export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent) => void;
+export interface WakeCancelledEvent {
+  wakeId: string;
+  targetAgentId: string;
+  initiatorAgentId?: string | undefined;
+  roomId?: string | undefined;
+  timestamp: number;
+}
+
+export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent) => void;
 
 export interface AgentProvider {
   id: string;
@@ -90,11 +98,18 @@ export class AgentBus {
   private onWakeEvent?: WakeEventCallback;
   private activeWakes: number = 0;
   private wakeQueue: Array<{ 
+    wakeId: string;
     fn: () => Promise<void>; 
     targetAgentId: string; 
     resolve: () => void; 
     reject: (err: Error) => void;
   }> = [];
+  private activeWakeIds: Map<string, { 
+    targetAgentId: string; 
+    initiatorAgentId?: string;
+    roomId?: string;
+    cancelled: boolean;
+  }> = new Map();
 
   constructor(config: AgentBusConfig) {
     this.providers = new Map(config.providers.map((p) => [p.id, p]));
@@ -199,15 +214,25 @@ export class AgentBus {
           }
         }
         
+        const wakeId = `wake-${Date.now()}-${wokeAgentId}-${Math.random().toString(36).slice(2, 9)}`;
+        this.activeWakeIds.set(wakeId, {
+          targetAgentId: wokeAgentId,
+          initiatorAgentId: agentId,
+          roomId,
+          cancelled: false,
+        });
+        
         const wakeFn = async () => {
           try {
-            const wakeMsg = await this.wakeAgent(wokeAgentId, message, agentId);
+            const wakeMsg = await this.wakeAgent(wokeAgentId, message, agentId, wakeId);
             onWakeResponse(wakeMsg);
           } catch (err) {
             console.error(`Failed to wake agent ${wokeAgentId}:`, err);
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
             let reason: WakeFailureReason = 'general-error';
-            if (errorMessage.includes('timeout') || errorMessage.includes('Wake timeout')) {
+            if (errorMessage.includes('cancelled') || errorMessage.includes('Wake cancelled')) {
+              reason = 'cancelled';
+            } else if (errorMessage.includes('timeout') || errorMessage.includes('Wake timeout')) {
               reason = 'timeout';
             } else if (errorMessage.includes('not found')) {
               reason = 'agent-not-found';
@@ -224,9 +249,11 @@ export class AgentBus {
               errorMessage,
               timestamp: Date.now(),
             });
+          } finally {
+            this.activeWakeIds.delete(wakeId);
           }
         };
-        this.enqueueWake(wokeAgentId, wakeFn);
+        this.enqueueWake(wokeAgentId, wakeFn, wakeId, agentId, roomId);
       });
     }
 
@@ -310,14 +337,24 @@ export class AgentBus {
           }
         }
         
+        const wakeId = `wake-${Date.now()}-${wokeAgentId}-${Math.random().toString(36).slice(2, 9)}`;
+        this.activeWakeIds.set(wakeId, {
+          targetAgentId: wokeAgentId,
+          initiatorAgentId: agentId,
+          roomId,
+          cancelled: false,
+        });
+        
         const wakeFn = async () => {
           try {
-            await this.wakeAgentStream(wokeAgentId, message, agentId, onWakeChunk);
+            await this.wakeAgentStream(wokeAgentId, message, agentId, onWakeChunk, wakeId);
           } catch (err) {
             console.error(`Failed to wake agent ${wokeAgentId}:`, err);
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
             let reason: WakeFailureReason = 'general-error';
-            if (errorMessage.includes('timeout') || errorMessage.includes('Wake timeout')) {
+            if (errorMessage.includes('cancelled') || errorMessage.includes('Wake cancelled')) {
+              reason = 'cancelled';
+            } else if (errorMessage.includes('timeout') || errorMessage.includes('Wake timeout')) {
               reason = 'timeout';
             } else if (errorMessage.includes('not found')) {
               reason = 'agent-not-found';
@@ -334,9 +371,11 @@ export class AgentBus {
               errorMessage,
               timestamp: Date.now(),
             });
+          } finally {
+            this.activeWakeIds.delete(wakeId);
           }
         };
-        this.enqueueWake(wokeAgentId, wakeFn);
+        this.enqueueWake(wokeAgentId, wakeFn, wakeId, agentId, roomId);
       });
     }
   }
@@ -345,7 +384,8 @@ export class AgentBus {
     wokeAgentId: string,
     originalMessage: string,
     wakerId: string,
-    onChunk: (wokeAgentId: string, chunk: string, done: boolean) => void
+    onChunk: (wokeAgentId: string, chunk: string, done: boolean) => void,
+    wakeId?: string
   ): Promise<void> {
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => {
@@ -359,7 +399,7 @@ export class AgentBus {
       }, 5000)
     );
 
-    const wakePromise = this._wakeAgentStreamInternal(wokeAgentId, originalMessage, wakerId, onChunk);
+    const wakePromise = this._wakeAgentStreamInternal(wokeAgentId, originalMessage, wakerId, onChunk, wakeId);
 
     await Promise.race([wakePromise, timeoutPromise]);
   }
@@ -368,7 +408,8 @@ export class AgentBus {
     wokeAgentId: string,
     originalMessage: string,
     wakerId: string,
-    onChunk: (wokeAgentId: string, chunk: string, done: boolean) => void
+    onChunk: (wokeAgentId: string, chunk: string, done: boolean) => void,
+    wakeId?: string
   ): Promise<void> {
     const wokeAgent = this.agents.get(wokeAgentId);
     if (!wokeAgent) {
@@ -389,9 +430,21 @@ export class AgentBus {
 
     if (provider.sendMessageStream) {
       await provider.sendMessageStream(wakeContext, { wake: true }, (chunk, done) => {
+        if (wakeId) {
+          const activeWake = this.activeWakeIds.get(wakeId);
+          if (activeWake?.cancelled) {
+            throw new Error('Wake cancelled');
+          }
+        }
         onChunk(wokeAgentId, chunk, done);
       });
     } else {
+      if (wakeId) {
+        const activeWake = this.activeWakeIds.get(wakeId);
+        if (activeWake?.cancelled) {
+          throw new Error('Wake cancelled');
+        }
+      }
       const response = await provider.sendMessage(wakeContext, { wake: true });
       onChunk(wokeAgentId, response, true);
     }
@@ -469,6 +522,14 @@ export class AgentBus {
     }
 
     const wakeContext = `Bot-initiated wake from agent ${initiatorAgentId}: ${message}`;
+    const wakeId = `wake-${Date.now()}-${targetAgentId}-${Math.random().toString(36).slice(2, 9)}`;
+    
+    this.activeWakeIds.set(wakeId, {
+      targetAgentId,
+      initiatorAgentId,
+      roomId,
+      cancelled: false,
+    });
     
     const wakeFn = async () => {
       const timeoutPromise = new Promise<never>((_, reject) =>
@@ -484,7 +545,7 @@ export class AgentBus {
         }, 5000)
       );
 
-      const wakePromise = this._wakeAgentInternal(targetAgentId, wakeContext, initiatorAgentId);
+      const wakePromise = this._wakeAgentInternal(targetAgentId, wakeContext, initiatorAgentId, wakeId);
 
       try {
         await Promise.race([wakePromise, timeoutPromise]);
@@ -492,7 +553,9 @@ export class AgentBus {
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
         if (!errorMessage.includes('Wake timeout')) {
           let reason: WakeFailureReason = 'general-error';
-          if (errorMessage.includes('not found')) {
+          if (errorMessage.includes('cancelled') || errorMessage.includes('Wake cancelled')) {
+            reason = 'cancelled';
+          } else if (errorMessage.includes('not found')) {
             reason = 'agent-not-found';
           } else if (errorMessage.includes('Provider not found')) {
             reason = 'provider-not-found';
@@ -509,10 +572,12 @@ export class AgentBus {
           });
         }
         throw err;
+      } finally {
+        this.activeWakeIds.delete(wakeId);
       }
     };
 
-    await this.enqueueWake(targetAgentId, wakeFn);
+    await this.enqueueWake(targetAgentId, wakeFn, wakeId, initiatorAgentId, roomId);
   }
 
   private extractMentions(message: string): string[] {
@@ -532,7 +597,8 @@ export class AgentBus {
   private async wakeAgent(
     wokeAgentId: string,
     originalMessage: string,
-    wakerId: string
+    wakerId: string,
+    wakeId?: string
   ): Promise<AgentBusMessage> {
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => {
@@ -546,7 +612,7 @@ export class AgentBus {
       }, 5000)
     );
 
-    const wakePromise = this._wakeAgentInternal(wokeAgentId, originalMessage, wakerId);
+    const wakePromise = this._wakeAgentInternal(wokeAgentId, originalMessage, wakerId, wakeId);
 
     return Promise.race([wakePromise, timeoutPromise]);
   }
@@ -554,8 +620,16 @@ export class AgentBus {
   private async _wakeAgentInternal(
     wokeAgentId: string,
     originalMessage: string,
-    wakerId: string
+    wakerId: string,
+    wakeId?: string
   ): Promise<AgentBusMessage> {
+    if (wakeId) {
+      const activeWake = this.activeWakeIds.get(wakeId);
+      if (activeWake?.cancelled) {
+        throw new Error('Wake cancelled');
+      }
+    }
+    
     const wokeAgent = this.agents.get(wokeAgentId);
     if (!wokeAgent) {
       throw new Error(`Woken agent not found: ${wokeAgentId}`);
@@ -569,6 +643,13 @@ export class AgentBus {
     const isAvailable = await provider.isAvailable();
     if (!isAvailable) {
       throw new Error(`Provider not available for woken agent: ${wokeAgent.providerId}`);
+    }
+
+    if (wakeId) {
+      const activeWake = this.activeWakeIds.get(wakeId);
+      if (activeWake?.cancelled) {
+        throw new Error('Wake cancelled');
+      }
     }
 
     const wakeContext = `Wake request from agent ${wakerId}: ${originalMessage}`;
@@ -687,19 +768,31 @@ export class AgentBus {
     return false;
   }
 
-  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent): void {
+  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent): void {
     if (this.onWakeEvent) {
       this.onWakeEvent(event);
     }
   }
 
-  private async enqueueWake(targetAgentId: string, wakeFn: () => Promise<void>): Promise<void> {
+  private async enqueueWake(targetAgentId: string, wakeFn: () => Promise<void>, wakeId?: string, initiatorAgentId?: string, roomId?: string): Promise<void> {
+    const finalWakeId = wakeId || `wake-${Date.now()}-${targetAgentId}-${Math.random().toString(36).slice(2, 9)}`;
+    
+    if (!wakeId) {
+      this.activeWakeIds.set(finalWakeId, {
+        targetAgentId,
+        initiatorAgentId,
+        roomId,
+        cancelled: false,
+      });
+    }
+    
     if (this.activeWakes < this.maxConcurrentWakes) {
       this.activeWakes++;
       try {
         await wakeFn();
       } finally {
         this.activeWakes--;
+        this.activeWakeIds.delete(finalWakeId);
         this.processWakeQueue();
       }
     } else {
@@ -707,6 +800,7 @@ export class AgentBus {
         if (this.wakeQueue.length >= this.wakeQueueLimit) {
           const droppedWake = this.wakeQueue.shift();
           if (droppedWake) {
+            this.activeWakeIds.delete(droppedWake.wakeId);
             droppedWake.reject(new Error(`Wake queue full (limit: ${this.wakeQueueLimit}), oldest wake dropped`));
             this.emitWakeEvent({
               targetAgentId: droppedWake.targetAgentId,
@@ -716,7 +810,7 @@ export class AgentBus {
             });
           }
         }
-        this.wakeQueue.push({ fn: wakeFn, targetAgentId, resolve, reject });
+        this.wakeQueue.push({ wakeId: finalWakeId, fn: wakeFn, targetAgentId, resolve, reject });
         this.emitWakeEvent({
           targetAgentId,
           queuePosition: this.wakeQueue.length,
@@ -743,6 +837,7 @@ export class AgentBus {
           })
           .finally(() => {
             this.activeWakes--;
+            this.activeWakeIds.delete(next.wakeId);
             this.processWakeQueue();
           });
       }
@@ -756,5 +851,42 @@ export class AgentBus {
       queueLimit: this.wakeQueueLimit,
       maxConcurrent: this.maxConcurrentWakes,
     };
+  }
+
+  cancelWake(wakeId: string): { cancelled: boolean; wasActive: boolean; wasQueued: boolean } {
+    const activeWake = this.activeWakeIds.get(wakeId);
+    if (activeWake) {
+      activeWake.cancelled = true;
+      const event: WakeCancelledEvent = {
+        wakeId,
+        targetAgentId: activeWake.targetAgentId,
+        initiatorAgentId: activeWake.initiatorAgentId,
+        roomId: activeWake.roomId,
+        timestamp: Date.now(),
+      };
+      this.emitWakeEvent(event);
+      return { cancelled: true, wasActive: true, wasQueued: false };
+    }
+
+    const queueIndex = this.wakeQueue.findIndex((w) => w.wakeId === wakeId);
+    if (queueIndex !== -1) {
+      const queuedWake = this.wakeQueue.splice(queueIndex, 1)[0];
+      const activeWakeEntry = this.activeWakeIds.get(wakeId);
+      this.activeWakeIds.delete(wakeId);
+      
+      const event: WakeCancelledEvent = {
+        wakeId,
+        targetAgentId: queuedWake.targetAgentId,
+        initiatorAgentId: activeWakeEntry?.initiatorAgentId,
+        roomId: activeWakeEntry?.roomId,
+        timestamp: Date.now(),
+      };
+      this.emitWakeEvent(event);
+      
+      queuedWake.reject(new Error('Wake cancelled'));
+      return { cancelled: true, wasActive: false, wasQueued: true };
+    }
+
+    return { cancelled: false, wasActive: false, wasQueued: false };
   }
 }
