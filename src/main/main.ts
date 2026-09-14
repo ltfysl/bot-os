@@ -106,6 +106,15 @@ app.whenReady().then(async () => {
           timestamp: event.timestamp,
           orderPosition: event.orderPosition,
         });
+      } else if ('kind' in event && event.kind === 'success') {
+        mainWindow.webContents.send('wake-success', {
+          wakeId: event.wakeId,
+          roomId: event.roomId,
+          initiatorAgentId: event.initiatorAgentId,
+          targetAgentId: event.targetAgentId,
+          streaming: event.streaming,
+          timestamp: event.timestamp,
+        });
       } else if ('reason' in event && event.reason === 'timeout') {
         mainWindow.webContents.send('wake-timeout', {
           roomId: event.roomId,
