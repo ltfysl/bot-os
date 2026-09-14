@@ -1,9 +1,9 @@
 # Streaming Backpressure End-to-End — Verification Summary
 
 **Date**: 2026-09-14  
-**Commit**: 1583ed7  
+**Commit**: 9c5cc85 (rebased onto main @ 6eff282)  
 **PR**: #38  
-**Status**: ✅ Complete — Draft PR Created
+**Status**: ✅ Complete — Draft PR (Rebased on latest main)
 
 ---
 

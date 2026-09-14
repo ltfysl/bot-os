@@ -2,7 +2,9 @@
 
 **Slice**: After #36 (Orin)  
 **Date**: 2026-09-14  
-**Status**: ✅ Complete
+**Status**: ✅ Complete  
+**Rebased**: 2026-09-14 onto main @ 6eff282 (after #37 wake-error chrome)  
+**Tip SHA**: 9c5cc85
 
 ---
 
