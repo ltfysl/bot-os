@@ -3,6 +3,7 @@ export type StreamChunkCallback = (chunk: string, done: boolean) => void;
 export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-found' | 'provider-not-found' | 'provider-unavailable' | 'general-error' | 'cancelled';
 
 export interface WakeFailureEvent {
+  wakeId?: string;
   roomId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
@@ -294,6 +295,7 @@ export class AgentBus {
               reason = 'provider-unavailable';
             }
             this.emitWakeEvent({
+              wakeId,
               roomId: context?.room as string | undefined || context?.roomId as string | undefined,
               targetAgentId: wokeAgentId,
               initiatorAgentId: agentId,
@@ -470,6 +472,7 @@ export class AgentBus {
               reason = 'provider-unavailable';
             }
             this.emitWakeEvent({
+              wakeId,
               roomId: context?.room as string | undefined || context?.roomId as string | undefined,
               targetAgentId: wokeAgentId,
               initiatorAgentId: agentId,
@@ -562,10 +565,14 @@ export class AgentBus {
     message: string,
     roomId?: string
   ): Promise<{ wakeId: string }> {
+    // Mint early so pre-start failures still carry wakeId for Square attribution.
+    const earlyWakeId = this.generateWakeId(targetAgentId, initiatorAgentId, roomId);
+
     const initiator = this.agents.get(initiatorAgentId);
     if (!initiator) {
       const error = new Error(`Initiator agent not found: ${initiatorAgentId}`);
       this.emitWakeEvent({
+        wakeId: earlyWakeId,
         targetAgentId,
         initiatorAgentId,
         roomId,
@@ -580,6 +587,7 @@ export class AgentBus {
     if (!target) {
       const error = new Error(`Target agent not found: ${targetAgentId}`);
       this.emitWakeEvent({
+        wakeId: earlyWakeId,
         targetAgentId,
         initiatorAgentId,
         roomId,
@@ -628,7 +636,7 @@ export class AgentBus {
     }
 
     const wakeContext = `Bot-initiated wake from agent ${initiatorAgentId}: ${message}`;
-    const wakeId = `wake-${Date.now()}-${targetAgentId}-${Math.random().toString(36).slice(2, 9)}`;
+    const wakeId = earlyWakeId;
     
     this.activeWakeIds.set(wakeId, {
       targetAgentId,
@@ -686,6 +694,7 @@ export class AgentBus {
             reason = 'provider-unavailable';
           }
           this.emitWakeEvent({
+            wakeId,
             roomId,
             initiatorAgentId,
             targetAgentId,
@@ -936,6 +945,7 @@ export class AgentBus {
             this.activeWakeIds.delete(droppedWake.wakeId);
             droppedWake.reject(new Error(`Wake queue full (limit: ${this.wakeQueueLimit}), oldest wake dropped`));
             this.emitWakeEvent({
+              wakeId: droppedWake.wakeId,
               targetAgentId: droppedWake.targetAgentId,
               reason: 'general-error',
               errorMessage: `Wake queue full (limit: ${this.wakeQueueLimit}), oldest wake dropped`,
