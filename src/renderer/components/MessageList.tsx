@@ -1,11 +1,19 @@
 import { useEffect, useRef } from 'react';
-import { User, Bot, MessageSquare, Check } from 'lucide-react';
+import { User, Bot, MessageSquare, Check, AlertCircle } from 'lucide-react';
 import WidgetCard from './WidgetCard';
 import type { Message, WidgetRequest } from '../types';
 
 interface ResolvedWidget {
   id: string;
   summary: string;
+  timestamp: number;
+}
+
+interface WakeErrorEvent {
+  id: string;
+  type: 'wake-failure' | 'wake-timeout' | 'wake-membership-denied';
+  reason: string;
+  agentName?: string;
   timestamp: number;
 }
 
@@ -29,6 +37,7 @@ interface MessageListProps {
   widgetRequest?: WidgetRequest | null;
   resolvedWidgets?: ResolvedWidget[];
   onWidgetResolve?: (response: { selected: string[]; customValue?: string; dismissed: boolean }) => void;
+  wakeErrors?: WakeErrorEvent[];
 }
 
 function parseInlineCode(text: string): (string | JSX.Element)[] {
@@ -59,12 +68,12 @@ function parseInlineCode(text: string): (string | JSX.Element)[] {
   return parts.length > 0 ? parts : [text];
 }
 
-export default function MessageList({ messages, streamingMessage, isLoading, agentName, agentAvatar, widgetRequest, resolvedWidgets = [], onWidgetResolve }: MessageListProps) {
+export default function MessageList({ messages, streamingMessage, isLoading, agentName, agentAvatar, widgetRequest, resolvedWidgets = [], onWidgetResolve, wakeErrors = [] }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, streamingMessage, widgetRequest]);
+  }, [messages, streamingMessage, widgetRequest, wakeErrors]);
 
   const lastAssistantMessage = messages.filter((m) => m.role === 'assistant').at(-1);
   const hasAssistantMessage = lastAssistantMessage !== undefined;
@@ -124,6 +133,21 @@ export default function MessageList({ messages, streamingMessage, isLoading, age
           </div>
         );
       })}
+      {wakeErrors.map((error) => (
+        <div key={error.id} className="message assistant">
+          <div className="message-avatar wake-error-avatar">
+            <AlertCircle size={16} strokeWidth={2} />
+          </div>
+          <div className="message-content">
+            <div className="wake-error-row">
+              <span className="wake-error-reason">{error.reason}</span>
+              {error.agentName && (
+                <span className="wake-error-agent">{error.agentName}</span>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
       {resolvedWidgets.map((resolved) => (
         <div key={resolved.id} className="message assistant">
           <div className="message-avatar">

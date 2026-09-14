@@ -518,6 +518,28 @@ code, .path {
   color: #ef4444;
 }
 
+.wake-error-avatar {
+  opacity: 0.5;
+}
+
+.wake-error-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+}
+
+.wake-error-reason {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.wake-error-agent {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .message-text.streaming {
   position: relative;
 }
@@ -545,6 +567,13 @@ code, .path {
 .compose-container {
   padding: 10px 16px 12px;
   border-top: 1px solid var(--border-subtle);
+}
+
+.backpressure-indicator {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 4px 0 8px;
+  text-align: center;
 }
 
 .compose-wrapper {

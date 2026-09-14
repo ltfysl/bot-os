@@ -1,11 +1,13 @@
 import { useState, useRef, KeyboardEvent } from 'react';
 import { Paperclip, Square } from 'lucide-react';
+import type { WakeBackpressureEvent } from '../types';
 
 interface MessageComposerProps {
   onSend: (message: string) => void;
   onStop?: () => void;
   disabled?: boolean;
   isStreaming?: boolean;
+  backpressureState?: WakeBackpressureEvent | null;
 }
 
 export default function MessageComposer({
@@ -13,6 +15,7 @@ export default function MessageComposer({
   onStop,
   disabled = false,
   isStreaming = false,
+  backpressureState = null,
 }: MessageComposerProps) {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -60,6 +63,11 @@ export default function MessageComposer({
 
   return (
     <div className="compose-container">
+      {backpressureState && (
+        <div className="backpressure-indicator">
+          Waiting…
+        </div>
+      )}
       <div className="compose-wrapper">
         <textarea
           ref={textareaRef}

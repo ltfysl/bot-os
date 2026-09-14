@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import MessageList from './MessageList';
 import MessageComposer from './MessageComposer';
-import type { Room, RoomMessage, Message, RoomStreamChunk } from '../types';
+import type { Room, RoomMessage, Message, RoomStreamChunk, WakeFailureEvent, WakeTimeoutEvent, WakeMembershipDeniedEvent, WakeBackpressureEvent } from '../types';
 
 interface RoomViewProps {
   room: Room;
@@ -21,11 +21,21 @@ interface StreamingRoomMessage {
   isStreaming: boolean;
 }
 
+interface WakeErrorEvent {
+  id: string;
+  type: 'wake-failure' | 'wake-timeout' | 'wake-membership-denied';
+  reason: string;
+  agentName?: string;
+  timestamp: number;
+}
+
 export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) {
   const [messages, setMessages] = useState<RoomMessage[]>([]);
   const [streamingMessage, setStreamingMessage] = useState<StreamingRoomMessage | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingTimeoutId, setLoadingTimeoutId] = useState<number | undefined>(undefined);
+  const [wakeErrors, setWakeErrors] = useState<WakeErrorEvent[]>([]);
+  const [backpressureState, setBackpressureState] = useState<WakeBackpressureEvent | null>(null);
 
   useEffect(() => {
     loadMessages();
@@ -37,6 +47,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
       if (message.roomId === room.id) {
         setMessages((prev) => [...prev, message]);
         setIsLoading(false);
+        setBackpressureState(null);
         if (loadingTimeoutId) {
           clearTimeout(loadingTimeoutId);
           setLoadingTimeoutId(undefined);
@@ -104,6 +115,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
             return prev;
           });
           setIsLoading(false);
+          setBackpressureState(null);
           if (loadingTimeoutId) {
             clearTimeout(loadingTimeoutId);
             setLoadingTimeoutId(undefined);
@@ -113,6 +125,84 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
     });
     return () => unsubscribe();
   }, [room.id, loadingTimeoutId]);
+
+  useEffect(() => {
+    const unsubFailure = window.electronAPI.onWakeFailure((event: WakeFailureEvent) => {
+      if (event.roomId === room.id) {
+        const targetAgent = agents.find((a) => a.id === event.targetAgentId);
+        setWakeErrors((prev) => [...prev, {
+          id: `failure-${event.timestamp}`,
+          type: 'wake-failure',
+          reason: formatWakeFailureReason(event.reason),
+          agentName: targetAgent?.name,
+          timestamp: event.timestamp,
+        }]);
+        setIsLoading(false);
+        setBackpressureState(null);
+      }
+    });
+
+    const unsubTimeout = window.electronAPI.onWakeTimeout((event: WakeTimeoutEvent) => {
+      if (event.roomId === room.id) {
+        const targetAgent = agents.find((a) => a.id === event.targetAgentId);
+        setWakeErrors((prev) => [...prev, {
+          id: `timeout-${event.timestamp}`,
+          type: 'wake-timeout',
+          reason: 'Timed out',
+          agentName: targetAgent?.name,
+          timestamp: event.timestamp,
+        }]);
+        setIsLoading(false);
+        setBackpressureState(null);
+      }
+    });
+
+    const unsubMembership = window.electronAPI.onWakeMembershipDenied((event: WakeMembershipDeniedEvent) => {
+      if (event.roomId === room.id) {
+        const targetAgent = agents.find((a) => a.id === event.targetAgentId);
+        setWakeErrors((prev) => [...prev, {
+          id: `membership-${event.timestamp}`,
+          type: 'wake-membership-denied',
+          reason: 'Not a member',
+          agentName: targetAgent?.name,
+          timestamp: event.timestamp,
+        }]);
+        setIsLoading(false);
+        setBackpressureState(null);
+      }
+    });
+
+    const unsubBackpressure = window.electronAPI.onWakeBackpressure((event: WakeBackpressureEvent) => {
+      const memberAgentIds = room.memberAgentIds;
+      if (memberAgentIds.includes(event.targetAgentId)) {
+        setBackpressureState(event);
+      }
+    });
+
+    return () => {
+      unsubFailure();
+      unsubTimeout();
+      unsubMembership();
+      unsubBackpressure();
+    };
+  }, [room.id, agents, room.memberAgentIds]);
+
+  const formatWakeFailureReason = (reason: string): string => {
+    switch (reason) {
+      case 'agent-not-found':
+        return 'Agent not found';
+      case 'provider-not-found':
+        return 'Provider not found';
+      case 'provider-unavailable':
+        return 'Provider unavailable';
+      case 'membership-denied':
+        return 'Not a member';
+      case 'timeout':
+        return 'Timed out';
+      default:
+        return 'Wake failed';
+    }
+  };
 
   const loadMessages = async () => {
     const roomMessages = await window.electronAPI.getRoomMessages(room.id);
@@ -279,6 +369,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
             isLoading={isLoading} 
             agentName={lastAssistantMessage?.agentName}
             agentAvatar={lastAssistantMessage?.agentAvatar}
+            wakeErrors={wakeErrors}
           />
         )}
       </div>
@@ -287,6 +378,7 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
         onStop={handleStopStreaming}
         disabled={isLoading && !streamingMessage}
         isStreaming={!!streamingMessage}
+        backpressureState={backpressureState}
       />
     </div>
   );
