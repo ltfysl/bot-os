@@ -730,6 +730,10 @@ ipcMain.handle('cancel-wake', async (_event, wakeId: string) => {
   }
 });
 
+ipcMain.handle('get-wake-backpressure-stats', async () => {
+  return agentBus.getWakeQueueStats();
+});
+
 function extractRoomMentions(message: string): string[] {
   const mentionPattern = /@(\w+)/g;
   const matches = Array.from(message.matchAll(mentionPattern));
