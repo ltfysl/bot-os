@@ -285,14 +285,16 @@ export class AgentBus {
           } catch (err) {
             console.error(`Failed to wake agent ${wokeAgentId}:`, err);
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-            // Cancel already emitted wake-cancelled via cancelWake — no dual wake-failure.
-            if (errorMessage.includes('cancelled') || errorMessage.includes('Wake cancelled')) {
+            // Cancel → wake-cancelled only; timeout → wake-timeout (timeoutMs) only.
+            if (
+              errorMessage.includes('cancelled') ||
+              errorMessage.includes('Wake cancelled') ||
+              errorMessage.includes('Wake timeout')
+            ) {
               return;
             }
             let reason: WakeFailureReason = 'general-error';
-            if (errorMessage.includes('timeout') || errorMessage.includes('Wake timeout')) {
-              reason = 'timeout';
-            } else if (errorMessage.includes('not found')) {
+            if (errorMessage.includes('not found')) {
               reason = 'agent-not-found';
             } else if (errorMessage.includes('Provider not found')) {
               reason = 'provider-not-found';
@@ -465,14 +467,16 @@ export class AgentBus {
           } catch (err) {
             console.error(`Failed to wake agent ${wokeAgentId}:`, err);
             const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-            // Cancel already emitted wake-cancelled via cancelWake — no dual wake-failure.
-            if (errorMessage.includes('cancelled') || errorMessage.includes('Wake cancelled')) {
+            // Cancel → wake-cancelled only; timeout → wake-timeout (timeoutMs) only.
+            if (
+              errorMessage.includes('cancelled') ||
+              errorMessage.includes('Wake cancelled') ||
+              errorMessage.includes('Wake timeout')
+            ) {
               return;
             }
             let reason: WakeFailureReason = 'general-error';
-            if (errorMessage.includes('timeout') || errorMessage.includes('Wake timeout')) {
-              reason = 'timeout';
-            } else if (errorMessage.includes('not found')) {
+            if (errorMessage.includes('not found')) {
               reason = 'agent-not-found';
             } else if (errorMessage.includes('Provider not found')) {
               reason = 'provider-not-found';
@@ -1172,14 +1176,16 @@ export class AgentBus {
         console.error(`Ordered wake failed for ${target.agentId} (position ${orderPosition}):`, err);
         this.activeWakeIds.delete(wakeId);
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-        if (errorMessage.includes('cancelled') || errorMessage.includes('Wake cancelled')) {
-          // wake-cancelled already emitted — do not also order-skip
+        if (
+          errorMessage.includes('cancelled') ||
+          errorMessage.includes('Wake cancelled') ||
+          errorMessage.includes('Wake timeout')
+        ) {
+          // wake-cancelled / wake-timeout already emitted — no dual order-skip
           continue;
         }
         let reason: WakeOrderSkipEvent['reason'] = 'general-error';
-        if (errorMessage.includes('timeout') || errorMessage.includes('Wake timeout')) {
-          reason = 'timeout';
-        } else if (errorMessage.includes('not found') || errorMessage.includes('Agent not found')) {
+        if (errorMessage.includes('not found') || errorMessage.includes('Agent not found')) {
           reason = 'agent-not-found';
         } else if (errorMessage.includes('member')) {
           reason = 'membership-denied';
