@@ -117,6 +117,13 @@ export interface RoomStreamChunk {
   wakeId?: string;
 }
 
+export interface RoomStreamError {
+  id: string;
+  roomId: string;
+  agentId?: string;
+  error: string;
+}
+
 export type WidgetType = 'single-select' | 'multi-select' | 'danger' | 'allow-custom';
 
 export interface WidgetOption {
@@ -302,6 +309,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: Electron.IpcRendererEvent, chunk: RoomStreamChunk) => callback(chunk);
     ipcRenderer.on('room-stream-chunk', handler);
     return () => ipcRenderer.removeListener('room-stream-chunk', handler);
+  },
+  onRoomStreamError: (callback: (error: RoomStreamError) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, err: RoomStreamError) => callback(err);
+    ipcRenderer.on('room-stream-error', handler);
+    return () => ipcRenderer.removeListener('room-stream-error', handler);
   },
   clearRoomUnread: (roomId: string): Promise<{ success: boolean }> =>
     ipcRenderer.invoke('clear-room-unread', roomId),
