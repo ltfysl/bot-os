@@ -79,9 +79,27 @@ export interface WakeCancelledEvent {
   timestamp: number;
 }
 
+export interface WakeChainCancelledEvent {
+  kind?: 'chain-cancelled';
+  chainId: string;
+  roomId?: string;
+  initiatorAgentId?: string;
+  cancelledWakeId?: string;
+  skippedAgentIds: string[];
+  timestamp: number;
+}
+
+export interface CancelWakeChainResult {
+  success: boolean;
+  cancelledWakeId?: string;
+  skippedAgentIds: string[];
+  error?: string;
+}
+
 export interface WakeStartedEvent {
   kind?: 'started';
   wakeId: string;
+  chainId?: string;
   targetAgentId: string;
   initiatorAgentId?: string;
   roomId?: string;
@@ -249,6 +267,8 @@ declare global {
       onWakeResponse: (callback: (message: Message) => void) => (() => void);
       requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string) => Promise<WakeResult>;
       cancelWake: (wakeId: string) => Promise<CancelWakeResult>;
+      cancelWakeChain: (chainId: string) => Promise<CancelWakeChainResult>;
+      onWakeChainCancelled: (callback: (event: WakeChainCancelledEvent) => void) => (() => void);
       getWakeBackpressureStats: () => Promise<WakeBackpressureStats>;
       getChannels: () => Promise<Channel[]>;
       getAgents: () => Promise<Agent[]>;

@@ -80,9 +80,19 @@ app.whenReady().then(async () => {
           activeWakes: event.activeWakes,
           timestamp: event.timestamp,
         });
+      } else if ('kind' in event && event.kind === 'chain-cancelled') {
+        mainWindow.webContents.send('wake-chain-cancelled', {
+          chainId: event.chainId,
+          roomId: event.roomId,
+          initiatorAgentId: event.initiatorAgentId,
+          cancelledWakeId: event.cancelledWakeId,
+          skippedAgentIds: event.skippedAgentIds,
+          timestamp: event.timestamp,
+        });
       } else if ('kind' in event && event.kind === 'started') {
         mainWindow.webContents.send('wake-started', {
           wakeId: event.wakeId,
+          chainId: event.chainId,
           targetAgentId: event.targetAgentId,
           initiatorAgentId: event.initiatorAgentId,
           roomId: event.roomId,
@@ -540,6 +550,7 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
   }
 
   const targets = mentionedAgentIds.map((agentId) => ({ agentId, message: content }));
+  const chainId = agentBus.createWakeChainId();
   void agentBus
     .enqueueOrderedWakes(
       targets,
@@ -562,13 +573,14 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
         roomManager.addRoomMessage(assistantMessage);
         roomManager.incrementUnread(roomId);
         event.sender.send('room-fan-in-response', assistantMessage);
-      }
+      },
+      chainId
     )
     .catch((err) => {
       console.error(`Ordered room fan-out failed in room ${roomId}:`, err);
     });
   
-  return userMessage;
+  return { ...userMessage, chainId };
 });
 
 ipcMain.handle('send-room-message-stream', async (event, roomId: string, content: string, senderId?: string) => {
@@ -650,6 +662,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
   }
 
   const streamTargets = mentionedAgentIds.map((agentId) => ({ agentId, message: content }));
+  const streamChainId = agentBus.createWakeChainId();
   const accumulatedByWake = new Map<string, string>();
   void agentBus
     .enqueueOrderedWakes(
@@ -697,7 +710,9 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
           roomManager.addRoomMessage(assistantMessage);
           roomManager.incrementUnread(roomId);
         }
-      }
+      },
+      undefined,
+      streamChainId
     )
     .catch((err) => {
       console.error(`Ordered room stream fan-out failed in room ${roomId}:`, err);
@@ -708,7 +723,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
       });
     });
   
-  return userMessage;
+  return { ...userMessage, chainId: streamChainId };
 });
 
 ipcMain.handle('clear-room-unread', async (_event, roomId: string) => {
@@ -744,6 +759,14 @@ ipcMain.handle('cancel-wake', async (_event, wakeId: string) => {
       error: error instanceof Error ? error.message : 'Unknown error' 
     };
   }
+});
+
+ipcMain.handle('cancel-wake-chain', async (_event, chainId: string) => {
+  if (typeof chainId !== 'string' || !chainId) {
+    return { success: false, skippedAgentIds: [], error: 'Invalid chainId' };
+  }
+  const result = agentBus.cancelWakeChain(chainId);
+  return { success: result.cancelled, cancelledWakeId: result.cancelledWakeId, skippedAgentIds: result.skippedAgentIds };
 });
 
 ipcMain.handle('get-wake-backpressure-stats', async () => {

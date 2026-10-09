@@ -51,6 +51,7 @@ export interface WakeCancelledEvent {
 export interface WakeStartedEvent {
   kind: 'started';
   wakeId: string;
+  chainId?: string;
   targetAgentId: string;
   initiatorAgentId?: string | undefined;
   roomId?: string | undefined;
@@ -79,7 +80,17 @@ export interface WakeSuccessEvent {
   timestamp: number;
 }
 
-export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent) => void;
+export interface WakeChainCancelledEvent {
+  kind: 'chain-cancelled';
+  chainId: string;
+  roomId?: string;
+  initiatorAgentId?: string;
+  cancelledWakeId?: string;
+  skippedAgentIds: string[];
+  timestamp: number;
+}
+
+export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent | WakeChainCancelledEvent) => void;
 
 export interface AgentProvider {
   id: string;
@@ -131,6 +142,14 @@ export class AgentBus {
   private agents: Map<string, AgentDescriptor>;
   private maxConcurrentWakes: number;
   private wakeQueueLimit: number;
+  private wakeChains = new Map<string, {
+    cancelled: boolean;
+    currentWakeId?: string;
+    remaining: string[];
+    roomId?: string;
+    initiatorAgentId?: string;
+  }>();
+  private wakeChainCounter = 0;
   private onWakeEvent?: WakeEventCallback;
   private activeWakes: number = 0;
   private wakeQueue: Array<{ 
@@ -920,7 +939,7 @@ export class AgentBus {
     return false;
   }
 
-  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent): void {
+  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent | WakeChainCancelledEvent): void {
     if ('errorMessage' in event && typeof event.errorMessage === 'string') {
       event = { ...event, errorMessage: sanitizeErrorMessage(event.errorMessage) };
     }
@@ -1031,11 +1050,25 @@ export class AgentBus {
     initiatorAgentId?: string,
     roomId?: string,
     onChunk?: (wakeId: string, agentId: string, chunk: string, done: boolean) => void,
-    onComplete?: (wakeId: string, agentId: string, message: AgentBusMessage) => void
+    onComplete?: (wakeId: string, agentId: string, message: AgentBusMessage) => void,
+    chainId: string = this.createWakeChainId()
   ): Promise<void> {
+    const chain = {
+      cancelled: false,
+      currentWakeId: undefined as string | undefined,
+      remaining: targets.map((t) => t.agentId),
+      roomId,
+      initiatorAgentId,
+    };
+    this.wakeChains.set(chainId, chain);
+    try {
     for (let orderPosition = 0; orderPosition < targets.length; orderPosition++) {
       const target = targets[orderPosition];
+      // Chain cancel: stop before starting the next target.
+      if (chain.cancelled) break;
+      chain.remaining = targets.slice(orderPosition + 1).map((t) => t.agentId);
       const wakeId = this.generateWakeId(target.agentId, initiatorAgentId, roomId);
+      chain.currentWakeId = wakeId;
 
       const emitSkip = (reason: WakeOrderSkipEvent['reason'], errorMessage: string) => {
         this.emitWakeEvent({
@@ -1111,6 +1144,7 @@ export class AgentBus {
         this.emitWakeEvent({
           kind: 'started',
           wakeId,
+          chainId,
           targetAgentId: target.agentId,
           initiatorAgentId,
           roomId,
@@ -1155,6 +1189,10 @@ export class AgentBus {
                 });
               } else {
                 const response = await this.sendMessage(target.message, target.agentId, context);
+                // Cancelled while the provider call was in flight: drop the late reply.
+                if (this.activeWakeIds.get(wakeId)?.cancelled) {
+                  throw new Error('Wake cancelled');
+                }
                 if (onComplete) {
                   onComplete(wakeId, target.agentId, response);
                 }
@@ -1197,6 +1235,41 @@ export class AgentBus {
         emitSkip(reason, errorMessage);
       }
     }
+    } finally {
+      chain.currentWakeId = undefined;
+      this.wakeChains.delete(chainId);
+    }
+  }
+
+  createWakeChainId(): string {
+    return `chain-${Date.now()}-${this.wakeChainCounter++}`;
+  }
+
+  /**
+   * Cancel a whole ordered wake chain: the in-flight wake is cancelled (wake-cancelled)
+   * and no later target starts. Emits one chain-cancelled with the skipped targets.
+   */
+  cancelWakeChain(chainId: string): { cancelled: boolean; cancelledWakeId?: string; skippedAgentIds: string[] } {
+    const chain = this.wakeChains.get(chainId);
+    if (!chain || chain.cancelled) {
+      return { cancelled: false, skippedAgentIds: [] };
+    }
+    chain.cancelled = true;
+    const skippedAgentIds = [...chain.remaining];
+    const cancelledWakeId = chain.currentWakeId;
+    if (cancelledWakeId) {
+      this.cancelWake(cancelledWakeId);
+    }
+    this.emitWakeEvent({
+      kind: 'chain-cancelled',
+      chainId,
+      roomId: chain.roomId,
+      initiatorAgentId: chain.initiatorAgentId,
+      cancelledWakeId,
+      skippedAgentIds,
+      timestamp: Date.now(),
+    });
+    return { cancelled: true, cancelledWakeId, skippedAgentIds };
   }
 
   cancelWake(wakeId: string): { cancelled: boolean; wasActive: boolean; wasQueued: boolean } {
