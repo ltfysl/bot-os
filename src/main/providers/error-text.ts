@@ -14,15 +14,36 @@ export function providerHttpError(providerName: string, status: number): Error {
   return new Error(`${providerName} API error ${status}: ${shortReasonForStatus(status)}`);
 }
 
-const KEY_LIKE = /(sk|xai|pk|rk|key|AIza)[-_A-Za-z0-9*]{6,}/g;
+// Word boundary + required separator so normal words (keyboard, risky) survive.
+const KEY_LIKE = /\b(?:sk|xai|pk|rk|key)[-_][A-Za-z0-9*_-]{4,}|\bAIza[A-Za-z0-9_-]{10,}/g;
 const BEARER = /Bearer\s+\S+/gi;
 
 // Last line of defense for any error text sent to the renderer.
 export function sanitizeErrorMessage(message: string): string {
   let out = message.split('\n')[0];
   const brace = out.search(/[{[]/);
-  if (brace >= 0) out = out.slice(0, brace).replace(/[:\s]+$/, '');
+  if (brace >= 0) {
+    const prefix = out.slice(0, brace).replace(/[:\s]+$/, '');
+    // Keep a readable reason from a JSON body instead of collapsing to "Provider error".
+    const inner = extractJsonMessage(out.slice(brace));
+    out = [prefix, inner].filter(Boolean).join(': ');
+  }
   out = out.replace(BEARER, 'Bearer [redacted]').replace(KEY_LIKE, '[redacted]');
   if (out.length > 120) out = `${out.slice(0, 117)}...`;
   return out || 'Provider error';
+}
+
+function extractJsonMessage(raw: string): string {
+  try {
+    const data = JSON.parse(raw) as unknown;
+    const pick = (v: unknown): string | undefined => {
+      if (!v || typeof v !== 'object') return typeof v === 'string' ? v : undefined;
+      const o = v as Record<string, unknown>;
+      return pick(o.error) ?? (typeof o.message === 'string' ? o.message : undefined);
+    };
+    const first = Array.isArray(data) ? data[0] : data;
+    return (pick(first) || '').split('\n')[0];
+  } catch {
+    return '';
+  }
 }
