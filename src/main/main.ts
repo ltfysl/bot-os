@@ -636,6 +636,12 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
           }
         ).catch((err) => {
           console.error(`Failed to send stream message from agent ${senderId}:`, err);
+          event.sender.send('room-stream-error', {
+            id: messageId,
+            roomId,
+            agentId: senderId,
+            error: err instanceof Error ? err.message : 'Unknown error',
+          });
         });
       }
     }
@@ -694,6 +700,11 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
     )
     .catch((err) => {
       console.error(`Ordered room stream fan-out failed in room ${roomId}:`, err);
+      event.sender.send('room-stream-error', {
+        id: `${Date.now()}-room-error`,
+        roomId,
+        error: err instanceof Error ? err.message : 'Unknown error',
+      });
     });
   
   return userMessage;

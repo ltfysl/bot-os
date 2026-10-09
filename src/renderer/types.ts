@@ -209,6 +209,13 @@ export interface RoomStreamChunk {
   wakeId?: string;
 }
 
+export interface RoomStreamError {
+  id: string;
+  roomId: string;
+  agentId?: string;
+  error: string;
+}
+
 export type WidgetType = 'single-select' | 'multi-select' | 'danger' | 'allow-custom';
 
 export interface WidgetOption {
@@ -237,6 +244,7 @@ declare global {
       sendMessageStream: (agentId: string, message: string) => Promise<StreamResponse>;
       onMessageStreamChunk: (callback: (chunk: StreamChunk) => void) => (() => void);
       onWakeStreamChunk: (callback: (chunk: StreamChunk) => void) => (() => void);
+      onRoomStreamError: (callback: (error: RoomStreamError) => void) => (() => void);
       onMessageStreamError: (callback: (error: { id: string; agentId: string; error: string }) => void) => (() => void);
       onWakeResponse: (callback: (message: Message) => void) => (() => void);
       requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string) => Promise<WakeResult>;

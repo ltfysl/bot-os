@@ -172,6 +172,38 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
       }
     });
 
+    const unsubOrderSkip = window.electronAPI.onWakeOrderSkip((event) => {
+      if (event.roomId === room.id) {
+        const targetAgent = agents.find((a) => a.id === event.targetAgentId);
+        setWakeErrors((prev) => [...prev, {
+          id: `order-skip-${event.wakeId}`,
+          type: 'wake-failure',
+          reason: event.errorMessage || formatWakeFailureReason(event.reason),
+          agentName: targetAgent?.name,
+          timestamp: event.timestamp,
+        }]);
+        setStreamingMessage(null);
+        setIsLoading(false);
+        setBackpressureState(null);
+      }
+    });
+
+    const unsubRoomError = window.electronAPI.onRoomStreamError((err) => {
+      if (err.roomId === room.id) {
+        const targetAgent = agents.find((a) => a.id === err.agentId);
+        setWakeErrors((prev) => [...prev, {
+          id: `room-error-${err.id}`,
+          type: 'wake-failure',
+          reason: err.error,
+          agentName: targetAgent?.name,
+          timestamp: Date.now(),
+        }]);
+        setStreamingMessage(null);
+        setIsLoading(false);
+        setBackpressureState(null);
+      }
+    });
+
     const unsubBackpressure = window.electronAPI.onWakeBackpressure((event: WakeBackpressureEvent) => {
       const memberAgentIds = room.memberAgentIds;
       if (memberAgentIds.includes(event.targetAgentId)) {
@@ -184,6 +216,8 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
       unsubTimeout();
       unsubMembership();
       unsubBackpressure();
+      unsubOrderSkip();
+      unsubRoomError();
     };
   }, [room.id, agents, room.memberAgentIds]);
 
