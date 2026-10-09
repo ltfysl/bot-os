@@ -134,6 +134,35 @@ export default function ChatView({ agent, onAgentsChange }: ChatViewProps) {
     return () => unsubscribe();
   }, [agent?.id]);
 
+  // Provider/stream errors: surface a chip-style message and unlock the composer.
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onMessageStreamError((err) => {
+      if (err.agentId !== agent?.id) return;
+      setStreamingMessage(null);
+      setIsLoading(false);
+      setBackpressureState(null);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `${err.id}-error`,
+          content: `Error: ${err.error}`,
+          role: 'assistant',
+          timestamp: Date.now(),
+          agentId: agent?.id,
+          agentName: agent?.name,
+          agentAvatar: agent?.avatar,
+        },
+      ]);
+    });
+    return () => unsubscribe();
+  }, [agent?.id]);
+
+  // Never carry a stuck send across agent switches.
+  useEffect(() => {
+    setIsLoading(false);
+    setStreamingMessage(null);
+  }, [agent?.id]);
+
   useEffect(() => {
     const unsubscribe = window.electronAPI.onWidgetRequest((request: WidgetRequest) => {
       setWidgetRequest(request);
