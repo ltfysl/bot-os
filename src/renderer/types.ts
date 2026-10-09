@@ -79,6 +79,18 @@ export interface WakeCancelledEvent {
   timestamp: number;
 }
 
+export interface WakeDepthExceededEvent {
+  kind?: 'depth-exceeded';
+  wakeId: string;
+  parentWakeId?: string;
+  roomId?: string;
+  initiatorAgentId: string;
+  targetAgentId: string;
+  depth: number;
+  maxDepth: number;
+  timestamp: number;
+}
+
 export interface WakeChainCancelledEvent {
   kind?: 'chain-cancelled';
   chainId: string;
@@ -265,8 +277,9 @@ declare global {
       onRoomStreamError: (callback: (error: RoomStreamError) => void) => (() => void);
       onMessageStreamError: (callback: (error: { id: string; agentId: string; error: string }) => void) => (() => void);
       onWakeResponse: (callback: (message: Message) => void) => (() => void);
-      requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string) => Promise<WakeResult>;
+      requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string, parentWakeId?: string) => Promise<WakeResult>;
       cancelWake: (wakeId: string) => Promise<CancelWakeResult>;
+      onWakeDepthExceeded: (callback: (event: WakeDepthExceededEvent) => void) => (() => void);
       cancelWakeChain: (chainId: string) => Promise<CancelWakeChainResult>;
       onWakeChainCancelled: (callback: (event: WakeChainCancelledEvent) => void) => (() => void);
       getWakeBackpressureStats: () => Promise<WakeBackpressureStats>;

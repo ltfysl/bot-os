@@ -192,6 +192,18 @@ export interface WakeCancelledEvent {
   timestamp: number;
 }
 
+export interface WakeDepthExceededEvent {
+  kind?: 'depth-exceeded';
+  wakeId: string;
+  parentWakeId?: string;
+  roomId?: string;
+  initiatorAgentId: string;
+  targetAgentId: string;
+  depth: number;
+  maxDepth: number;
+  timestamp: number;
+}
+
 export interface WakeChainCancelledEvent {
   kind?: 'chain-cancelled';
   chainId: string;
@@ -280,10 +292,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('wake-response', handler);
     return () => ipcRenderer.removeListener('wake-response', handler);
   },
-  requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string): Promise<WakeResult> =>
-    ipcRenderer.invoke('request-agent-wake', initiatorAgentId, targetAgentId, message, roomId),
+  requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string, parentWakeId?: string): Promise<WakeResult> =>
+    ipcRenderer.invoke('request-agent-wake', initiatorAgentId, targetAgentId, message, roomId, parentWakeId),
   cancelWake: (wakeId: string): Promise<CancelWakeResult> =>
     ipcRenderer.invoke('cancel-wake', wakeId),
+  onWakeDepthExceeded: (callback: (event: WakeDepthExceededEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, e: WakeDepthExceededEvent) => callback(e);
+    ipcRenderer.on('wake-depth-exceeded', handler);
+    return () => ipcRenderer.removeListener('wake-depth-exceeded', handler);
+  },
   cancelWakeChain: (chainId: string): Promise<CancelWakeChainResult> =>
     ipcRenderer.invoke('cancel-wake-chain', chainId),
   onWakeChainCancelled: (callback: (event: WakeChainCancelledEvent) => void): (() => void) => {

@@ -90,7 +90,19 @@ export interface WakeChainCancelledEvent {
   timestamp: number;
 }
 
-export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent | WakeChainCancelledEvent) => void;
+export interface WakeDepthExceededEvent {
+  kind: 'depth-exceeded';
+  wakeId: string;
+  parentWakeId?: string;
+  roomId?: string;
+  initiatorAgentId: string;
+  targetAgentId: string;
+  depth: number;
+  maxDepth: number;
+  timestamp: number;
+}
+
+export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent | WakeChainCancelledEvent | WakeDepthExceededEvent) => void;
 
 export interface AgentProvider {
   id: string;
@@ -164,8 +176,11 @@ export class AgentBus {
     initiatorAgentId?: string;
     roomId?: string;
     cancelled: boolean;
+    /** Bot-to-bot hop count. Root wakes are 1; missing means 1. */
+    depth?: number;
   }> = new Map();
   private wakeIdCounter: number = 0;
+  static readonly MAX_WAKE_DEPTH = 4;
 
   constructor(config: AgentBusConfig) {
     this.providers = new Map(config.providers.map((p) => [p.id, p]));
@@ -596,10 +611,29 @@ export class AgentBus {
     initiatorAgentId: string,
     targetAgentId: string,
     message: string,
-    roomId?: string
+    roomId?: string,
+    parentWakeId?: string
   ): Promise<{ wakeId: string }> {
     // Mint early so pre-start failures still carry wakeId for Square attribution.
     const earlyWakeId = this.generateWakeId(targetAgentId, initiatorAgentId, roomId);
+
+    // Depth guard: the bus derives the parent itself. A caller-supplied parent can only
+    // raise the depth, never lower it, so omitting it does not reset the chain to 0.
+    const { depth, parent } = this.resolveWakeDepth(initiatorAgentId, parentWakeId);
+    if (depth > AgentBus.MAX_WAKE_DEPTH) {
+      this.emitWakeEvent({
+        kind: 'depth-exceeded',
+        wakeId: earlyWakeId,
+        parentWakeId: parent,
+        roomId,
+        initiatorAgentId,
+        targetAgentId,
+        depth,
+        maxDepth: AgentBus.MAX_WAKE_DEPTH,
+        timestamp: Date.now(),
+      });
+      throw new Error(`Wake depth exceeded (${depth} > ${AgentBus.MAX_WAKE_DEPTH})`);
+    }
 
     const initiator = this.agents.get(initiatorAgentId);
     if (!initiator) {
@@ -678,6 +712,7 @@ export class AgentBus {
       initiatorAgentId,
       roomId,
       cancelled: false,
+      depth,
     });
     this.emitWakeEvent({
       kind: 'started',
@@ -939,7 +974,7 @@ export class AgentBus {
     return false;
   }
 
-  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent | WakeChainCancelledEvent): void {
+  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent | WakeChainCancelledEvent | WakeDepthExceededEvent): void {
     if ('errorMessage' in event && typeof event.errorMessage === 'string') {
       event = { ...event, errorMessage: sanitizeErrorMessage(event.errorMessage) };
     }
@@ -1239,6 +1274,23 @@ export class AgentBus {
       chain.currentWakeId = undefined;
       this.wakeChains.delete(chainId);
     }
+  }
+
+  /** Deepest active wake that targets the initiator, plus an optional caller hint. */
+  private resolveWakeDepth(initiatorAgentId: string, parentWakeId?: string): { depth: number; parent?: string } {
+    let parentDepth = 0;
+    let parent: string | undefined;
+    for (const [id, w] of this.activeWakeIds) {
+      if (w.cancelled || w.targetAgentId !== initiatorAgentId) continue;
+      const d = w.depth ?? 1;
+      if (d > parentDepth) { parentDepth = d; parent = id; }
+    }
+    if (parentWakeId) {
+      const hinted = this.activeWakeIds.get(parentWakeId);
+      const d = hinted ? (hinted.depth ?? 1) : 0;
+      if (d > parentDepth) { parentDepth = d; parent = parentWakeId; }
+    }
+    return { depth: parentDepth + 1, parent };
   }
 
   createWakeChainId(): string {
