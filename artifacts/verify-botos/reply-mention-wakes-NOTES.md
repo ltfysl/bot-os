@@ -32,3 +32,8 @@ Harness additions:
 - 4 agents that all mention each other: **8** provider wakes, 8 counted in the chain, exactly 1 `budget-exceeded` (it was 40 before)
 - A reply mentioning `@m5 @m1 @m2 @m3 @m4` wakes `m5, m1, m2`, and `m3, m4` are skipped with `mention-cap`
 - Ping-pong is unchanged: `coder@1 … assistant@4`, then one `depth-exceeded` at 5
+
+## Budget lifecycle (Remy re-walk)
+- When a chain ends or is cancelled (all loops have finished, including reply fan-out), main frees `chainBudget`, `depthExceededChains`, `cancelledChains` and `wakeChains` for that `chainId`.
+- A new user message gets a new `chainId`, and with it a fresh budget.
+- Harness: after the chain ends the count is 0, and after a cancel it's also 0. A new chain again gets 8 wakes and its own single `budget-exceeded`. (The width case now reads `chainWakes: 0` because the count is freed once the chain is over. The provider wakes stay at 8.)

@@ -83,6 +83,27 @@ const kinds = (events, k) => events.filter((e) => e.kind === k);
     await wait(400);
     results.mentionCap = { woken: done.filter((d) => d.agentId !== 'boss').map((d) => d.agentId), capped: events.filter((e) => e.reason === 'mention-cap').map((e) => e.targetAgentId) };
   }
+  // 8. Budget frees up when a chain ends or is cancelled; a new user message gets a fresh budget.
+  {
+    const all = '@w1 @w2 @w3 @w4';
+    const { bus, events, done, onComplete } = makeBus({ w1: all, w2: all, w3: all, w4: all, u: '' }, 10);
+    global.roomManager = { getRoom: () => ({ memberAgentIds: ['w1', 'w2', 'w3', 'w4', 'u'] }) };
+    const c1 = bus.createWakeChainId();
+    await bus.enqueueOrderedWakes([{ agentId: 'w1', message: 'go' }], 'u', 'room1', undefined, onComplete, c1);
+    await wait(1500);
+    const afterEnd = bus.getChainWakeCount(c1);
+    const c2 = bus.createWakeChainId();
+    void bus.enqueueOrderedWakes([{ agentId: 'w1', message: 'go' }], 'u', 'room1', undefined, onComplete, c2);
+    await wait(15);
+    bus.cancelWakeChain(c2);
+    await wait(500);
+    const afterCancel = bus.getChainWakeCount(c2);
+    const before = done.length;
+    const c3 = bus.createWakeChainId();
+    await bus.enqueueOrderedWakes([{ agentId: 'w1', message: 'go' }], 'u', 'room1', undefined, onComplete, c3);
+    await wait(1500);
+    results.budgetLifecycle = { freedAfterEnd: afterEnd === 0, freedAfterCancel: afterCancel === 0, freshChainWakes: done.length - before, budgetExceededTotal: kinds(events, 'budget-exceeded').length };
+  }
   console.log(JSON.stringify(results, null, 2));
   process.exit(0);
 })();

@@ -1388,7 +1388,13 @@ export class AgentBus {
     } finally {
       chain.remainingByLoop.delete(loopId);
       chain.running--;
-      if (chain.running <= 0) this.wakeChains.delete(chainId);
+      if (chain.running <= 0) {
+        // Chain is over (all loops, incl. reply fan-out, have finished): free its guards.
+        this.wakeChains.delete(chainId);
+        this.chainBudget.delete(chainId);
+        this.depthExceededChains.delete(chainId);
+        this.cancelledChains.delete(chainId);
+      }
     }
   }
 
