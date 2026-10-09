@@ -192,9 +192,27 @@ export interface WakeCancelledEvent {
   timestamp: number;
 }
 
+export interface WakeChainCancelledEvent {
+  kind?: 'chain-cancelled';
+  chainId: string;
+  roomId?: string;
+  initiatorAgentId?: string;
+  cancelledWakeId?: string;
+  skippedAgentIds: string[];
+  timestamp: number;
+}
+
+export interface CancelWakeChainResult {
+  success: boolean;
+  cancelledWakeId?: string;
+  skippedAgentIds: string[];
+  error?: string;
+}
+
 export interface WakeStartedEvent {
   kind?: 'started';
   wakeId: string;
+  chainId?: string;
   targetAgentId: string;
   initiatorAgentId?: string;
   roomId?: string;
@@ -266,6 +284,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('request-agent-wake', initiatorAgentId, targetAgentId, message, roomId),
   cancelWake: (wakeId: string): Promise<CancelWakeResult> =>
     ipcRenderer.invoke('cancel-wake', wakeId),
+  cancelWakeChain: (chainId: string): Promise<CancelWakeChainResult> =>
+    ipcRenderer.invoke('cancel-wake-chain', chainId),
+  onWakeChainCancelled: (callback: (event: WakeChainCancelledEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, e: WakeChainCancelledEvent) => callback(e);
+    ipcRenderer.on('wake-chain-cancelled', handler);
+    return () => ipcRenderer.removeListener('wake-chain-cancelled', handler);
+  },
   getWakeBackpressureStats: (): Promise<WakeBackpressureStats> =>
     ipcRenderer.invoke('get-wake-backpressure-stats'),
   getChannels: (): Promise<Channel[]> => ipcRenderer.invoke('get-channels'),
