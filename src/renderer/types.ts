@@ -79,6 +79,16 @@ export interface WakeCancelledEvent {
   timestamp: number;
 }
 
+export interface WakeBudgetExceededEvent {
+  kind?: 'budget-exceeded';
+  chainId: string;
+  roomId?: string;
+  initiatorAgentId?: string;
+  targetAgentId: string;
+  budget: number;
+  timestamp: number;
+}
+
 export interface WakeDepthExceededEvent {
   kind?: 'depth-exceeded';
   wakeId: string;
@@ -124,7 +134,7 @@ export interface WakeOrderSkipEvent {
   roomId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
-  reason: 'membership-denied' | 'agent-not-found' | 'timeout' | 'general-error';
+  reason: 'membership-denied' | 'agent-not-found' | 'timeout' | 'general-error' | 'mention-cap' | 'already-in-flight';
   errorMessage: string;
   timestamp: number;
   orderPosition: number;
@@ -226,6 +236,10 @@ export interface RoomMessage {
   agentId?: string;
   agentName?: string;
   agentAvatar?: string;
+  wakeId?: string;
+  /** Set by the bus for wakes in an ordered chain (read-only for the renderer). */
+  initiatorAgentId?: string;
+  lineage?: { chainId: string; depth: number; initiatorAgentId?: string };
 }
 
 export interface RoomStreamChunk {
@@ -237,6 +251,9 @@ export interface RoomStreamChunk {
   chunk: string;
   done: boolean;
   wakeId?: string;
+  /** Set by the bus for wakes in an ordered chain (read-only for the renderer). */
+  initiatorAgentId?: string;
+  lineage?: { chainId: string; depth: number; initiatorAgentId?: string };
 }
 
 export interface RoomStreamError {
@@ -279,6 +296,7 @@ declare global {
       onWakeResponse: (callback: (message: Message) => void) => (() => void);
       requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string, parentWakeId?: string) => Promise<WakeResult>;
       cancelWake: (wakeId: string) => Promise<CancelWakeResult>;
+      onWakeBudgetExceeded: (callback: (event: WakeBudgetExceededEvent) => void) => (() => void);
       onWakeDepthExceeded: (callback: (event: WakeDepthExceededEvent) => void) => (() => void);
       cancelWakeChain: (chainId: string) => Promise<CancelWakeChainResult>;
       onWakeChainCancelled: (callback: (event: WakeChainCancelledEvent) => void) => (() => void);
