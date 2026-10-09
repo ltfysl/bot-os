@@ -1,3 +1,4 @@
+import { providerHttpError } from './error-text';
 import type { AgentProvider, StreamChunkCallback } from '../agent-bus';
 import { getProviderSecret } from '../secrets';
 
@@ -93,8 +94,8 @@ export class GeminiProvider implements AgentProvider {
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`Gemini API error ${response.status}: ${errorText}`);
+        await response.text().catch(() => '');
+        throw providerHttpError('Gemini', response.status);
       }
 
       const data = (await response.json()) as GeminiResponse;
@@ -161,8 +162,8 @@ export class GeminiProvider implements AgentProvider {
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`Gemini API error ${response.status}: ${errorText}`);
+        await response.text().catch(() => '');
+        throw providerHttpError('Gemini', response.status);
       }
 
       if (!response.body) {
