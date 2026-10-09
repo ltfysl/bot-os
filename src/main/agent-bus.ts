@@ -64,7 +64,7 @@ export interface WakeOrderSkipEvent {
   roomId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
-  reason: 'membership-denied' | 'agent-not-found' | 'timeout' | 'general-error';
+  reason: 'membership-denied' | 'agent-not-found' | 'timeout' | 'general-error' | 'mention-cap' | 'already-in-flight';
   errorMessage: string;
   timestamp: number;
   orderPosition: number;
@@ -102,7 +102,17 @@ export interface WakeDepthExceededEvent {
   timestamp: number;
 }
 
-export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent | WakeChainCancelledEvent | WakeDepthExceededEvent) => void;
+export interface WakeBudgetExceededEvent {
+  kind: 'budget-exceeded';
+  chainId: string;
+  roomId?: string;
+  initiatorAgentId?: string;
+  targetAgentId: string;
+  budget: number;
+  timestamp: number;
+}
+
+export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent | WakeChainCancelledEvent | WakeDepthExceededEvent | WakeBudgetExceededEvent) => void;
 
 export interface AgentProvider {
   id: string;
@@ -173,6 +183,10 @@ export class AgentBus {
   private wakeLineage = new Map<string, WakeLineage>();
   private cancelledChains = new Set<string>();
   private depthExceededChains = new Set<string>();
+  /** Per-chain cost guard, main process only: total wakes started and agents in flight. */
+  private chainBudget = new Map<string, { wakes: number; exceeded: boolean; inFlight: Set<string> }>();
+  static readonly MAX_CHAIN_WAKES = 8;
+  static readonly MAX_MENTIONS_PER_REPLY = 3;
   private wakeChainCounter = 0;
   private onWakeEvent?: WakeEventCallback;
   private activeWakes: number = 0;
@@ -797,6 +811,18 @@ export class AgentBus {
     return { wakeId };
   }
 
+  /** Mentioned agent ids in the order they appear in the text. */
+  private extractMentionsInOrder(message: string): string[] {
+    const ids: string[] = [];
+    for (const m of message.matchAll(/@(\w+)/g)) {
+      const name = m[1].toLowerCase();
+      for (const agent of this.agents.values()) {
+        if (agent.name.toLowerCase() === name) ids.push(agent.id);
+      }
+    }
+    return ids;
+  }
+
   private extractMentions(message: string): string[] {
     const mentionPattern = /@(\w+)/g;
     const matches = Array.from(message.matchAll(mentionPattern));
@@ -986,7 +1012,7 @@ export class AgentBus {
     return false;
   }
 
-  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent | WakeChainCancelledEvent | WakeDepthExceededEvent): void {
+  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent | WakeChainCancelledEvent | WakeDepthExceededEvent | WakeBudgetExceededEvent): void {
     if ('errorMessage' in event && typeof event.errorMessage === 'string') {
       event = { ...event, errorMessage: sanitizeErrorMessage(event.errorMessage) };
     }
@@ -1142,6 +1168,40 @@ export class AgentBus {
         }
         continue;
       }
+
+      const budget = this.getChainBudget(chainId);
+      // Dedupe only parallel duplicates; sequential back-and-forth is bounded by depth + budget.
+      if (budget.inFlight.has(target.agentId)) {
+        this.emitWakeEvent({
+          kind: 'order-skip',
+          wakeId,
+          roomId,
+          initiatorAgentId,
+          targetAgentId: target.agentId,
+          reason: 'already-in-flight',
+          errorMessage: `Agent ${target.agentId} is already running in this chain`,
+          timestamp: Date.now(),
+          orderPosition,
+        });
+        continue;
+      }
+      if (budget.wakes >= AgentBus.MAX_CHAIN_WAKES) {
+        if (!budget.exceeded) {
+          budget.exceeded = true;
+          this.emitWakeEvent({
+            kind: 'budget-exceeded',
+            chainId,
+            roomId,
+            initiatorAgentId,
+            targetAgentId: target.agentId,
+            budget: AgentBus.MAX_CHAIN_WAKES,
+            timestamp: Date.now(),
+          });
+        }
+        continue;
+      }
+      budget.wakes++;
+      budget.inFlight.add(target.agentId);
 
       const lineage: WakeLineage = { chainId, depth, initiatorAgentId };
       this.rememberLineage(wakeId, lineage);
@@ -1300,9 +1360,11 @@ export class AgentBus {
           roomId
         );
         chain.currentWakeIds.delete(wakeId);
+        budget.inFlight.delete(target.agentId);
         this.fanOutReplyMentions(replyContent, target.agentId, roomId, chainId, depth, onChunk, onComplete);
       } catch (err) {
         chain.currentWakeIds.delete(wakeId);
+        budget.inFlight.delete(target.agentId);
         console.error(`Ordered wake failed for ${target.agentId} (position ${orderPosition}):`, err);
         this.activeWakeIds.delete(wakeId);
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -1328,6 +1390,24 @@ export class AgentBus {
       chain.running--;
       if (chain.running <= 0) this.wakeChains.delete(chainId);
     }
+  }
+
+  private getChainBudget(chainId: string): { wakes: number; exceeded: boolean; inFlight: Set<string> } {
+    let b = this.chainBudget.get(chainId);
+    if (!b) {
+      b = { wakes: 0, exceeded: false, inFlight: new Set<string>() };
+      this.chainBudget.set(chainId, b);
+      if (this.chainBudget.size > 500) {
+        const oldest = this.chainBudget.keys().next().value;
+        if (oldest !== undefined) this.chainBudget.delete(oldest);
+      }
+    }
+    return b;
+  }
+
+  /** Read-only budget snapshot for a chain (for harness and metrics). */
+  getChainWakeCount(chainId: string): number {
+    return this.chainBudget.get(chainId)?.wakes ?? 0;
   }
 
   private rememberLineage(wakeId: string, lineage: WakeLineage): void {
@@ -1358,8 +1438,24 @@ export class AgentBus {
     onComplete?: (wakeId: string, agentId: string, message: AgentBusMessage, lineage?: WakeLineage) => void
   ): void {
     if (!replyContent || this.cancelledChains.has(chainId)) return;
-    const targets = Array.from(new Set(this.extractMentions(replyContent)))
-      .filter((id) => id !== replyingAgentId)
+    const mentioned = Array.from(new Set(this.extractMentionsInOrder(replyContent)))
+      .filter((id) => id !== replyingAgentId);
+    const capped = mentioned.slice(AgentBus.MAX_MENTIONS_PER_REPLY);
+    for (const agentId of capped) {
+      this.emitWakeEvent({
+        kind: 'order-skip',
+        wakeId: this.generateWakeId(agentId, replyingAgentId, roomId),
+        roomId,
+        initiatorAgentId: replyingAgentId,
+        targetAgentId: agentId,
+        reason: 'mention-cap',
+        errorMessage: `Only ${AgentBus.MAX_MENTIONS_PER_REPLY} mentions per reply wake agents`,
+        timestamp: Date.now(),
+        orderPosition: -1,
+      });
+    }
+    const targets = mentioned
+      .slice(0, AgentBus.MAX_MENTIONS_PER_REPLY)
       .map((agentId) => ({ agentId, message: replyContent }));
     if (targets.length === 0) return;
     void this.enqueueOrderedWakes(targets, replyingAgentId, roomId, onChunk, onComplete, chainId, parentDepth + 1)

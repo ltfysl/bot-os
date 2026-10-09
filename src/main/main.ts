@@ -80,6 +80,15 @@ app.whenReady().then(async () => {
           activeWakes: event.activeWakes,
           timestamp: event.timestamp,
         });
+      } else if ('kind' in event && event.kind === 'budget-exceeded') {
+        mainWindow.webContents.send('wake-budget-exceeded', {
+          chainId: event.chainId,
+          roomId: event.roomId,
+          initiatorAgentId: event.initiatorAgentId,
+          targetAgentId: event.targetAgentId,
+          budget: event.budget,
+          timestamp: event.timestamp,
+        });
       } else if ('kind' in event && event.kind === 'depth-exceeded') {
         mainWindow.webContents.send('wake-depth-exceeded', {
           wakeId: event.wakeId,

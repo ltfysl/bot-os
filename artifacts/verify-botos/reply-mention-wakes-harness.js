@@ -65,6 +65,24 @@ const kinds = (events, k) => events.filter((e) => e.kind === k);
     const started = kinds(events, 'started')[0];
     results.failedParentLineage = bus.getWakeLineage(started.wakeId);
   }
+  // 6. Remy's width case: 4 agents that all mention each other. Budget caps the chain at 8 wakes.
+  {
+    const all = '@w1 @w2 @w3 @w4';
+    const { bus, events, done, onComplete } = makeBus({ w1: all, w2: all, w3: all, w4: all, u: '' }, 10);
+    global.roomManager = { getRoom: () => ({ memberAgentIds: ['w1', 'w2', 'w3', 'w4', 'u'] }) };
+    const chain = bus.createWakeChainId();
+    await bus.enqueueOrderedWakes([{ agentId: 'w1', message: 'go' }], 'u', 'room1', undefined, onComplete, chain);
+    await wait(1500);
+    results.widthBudget = { providerWakes: done.length, chainWakes: bus.getChainWakeCount(chain), budgetExceeded: kinds(events, 'budget-exceeded').length, inFlightSkips: events.filter((e) => e.reason === 'already-in-flight').length };
+  }
+  // 7. Mention cap: one reply mentioning 5 agents wakes only the first 3 (text order).
+  {
+    const { bus, events, done, onComplete } = makeBus({ boss: 'ping @m5 @m1 @m2 @m3 @m4', m1: '', m2: '', m3: '', m4: '', m5: '', u: '' }, 10);
+    global.roomManager = { getRoom: () => ({ memberAgentIds: ['boss', 'm1', 'm2', 'm3', 'm4', 'm5', 'u'] }) };
+    await bus.enqueueOrderedWakes([{ agentId: 'boss', message: 'go' }], 'u', 'room1', undefined, onComplete);
+    await wait(400);
+    results.mentionCap = { woken: done.filter((d) => d.agentId !== 'boss').map((d) => d.agentId), capped: events.filter((e) => e.reason === 'mention-cap').map((e) => e.targetAgentId) };
+  }
   console.log(JSON.stringify(results, null, 2));
   process.exit(0);
 })();

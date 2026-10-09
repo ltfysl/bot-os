@@ -22,3 +22,13 @@ The earlier harnesses (#55 chain cancel, #56 depth guard) still pass.
 ## Not in scope
 - DMs and `requestAgentWake`: reply fan-out runs only on the ordered room path for now.
 - The "via @Agent" and "Chain stopped" rows are Vale's Cancel-Chrome work.
+
+## Fix for Remy's REQUEST CHANGES (fan-out width)
+- **At most 3 mention wakes per reply**, taken in text order. Anything past that gets `wake-order-skip` with reason `mention-cap`.
+- **Budget of 8 wakes per `chainId`**, counted in main (`chainBudget`, next to the lineage). The first wake over budget emits exactly one `wake-budget-exceeded`, and later ones are skipped silently.
+- **Dedupe for agents already in flight only** (Vale): an agent that is running or queued in this chain isn't woken again in parallel (`wake-order-skip` / `already-in-flight`). Agents that already finished may be woken again, so back-and-forth questions still work. Depth and budget bound the total.
+
+Harness additions:
+- 4 agents that all mention each other: **8** provider wakes, 8 counted in the chain, exactly 1 `budget-exceeded` (it was 40 before)
+- A reply mentioning `@m5 @m1 @m2 @m3 @m4` wakes `m5, m1, m2`, and `m3, m4` are skipped with `mention-cap`
+- Ping-pong is unchanged: `coder@1 … assistant@4`, then one `depth-exceeded` at 5

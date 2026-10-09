@@ -79,6 +79,16 @@ export interface WakeCancelledEvent {
   timestamp: number;
 }
 
+export interface WakeBudgetExceededEvent {
+  kind?: 'budget-exceeded';
+  chainId: string;
+  roomId?: string;
+  initiatorAgentId?: string;
+  targetAgentId: string;
+  budget: number;
+  timestamp: number;
+}
+
 export interface WakeDepthExceededEvent {
   kind?: 'depth-exceeded';
   wakeId: string;
@@ -124,7 +134,7 @@ export interface WakeOrderSkipEvent {
   roomId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
-  reason: 'membership-denied' | 'agent-not-found' | 'timeout' | 'general-error';
+  reason: 'membership-denied' | 'agent-not-found' | 'timeout' | 'general-error' | 'mention-cap' | 'already-in-flight';
   errorMessage: string;
   timestamp: number;
   orderPosition: number;
@@ -286,6 +296,7 @@ declare global {
       onWakeResponse: (callback: (message: Message) => void) => (() => void);
       requestAgentWake: (initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string, parentWakeId?: string) => Promise<WakeResult>;
       cancelWake: (wakeId: string) => Promise<CancelWakeResult>;
+      onWakeBudgetExceeded: (callback: (event: WakeBudgetExceededEvent) => void) => (() => void);
       onWakeDepthExceeded: (callback: (event: WakeDepthExceededEvent) => void) => (() => void);
       cancelWakeChain: (chainId: string) => Promise<CancelWakeChainResult>;
       onWakeChainCancelled: (callback: (event: WakeChainCancelledEvent) => void) => (() => void);

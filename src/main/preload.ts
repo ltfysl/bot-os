@@ -199,6 +199,16 @@ export interface WakeCancelledEvent {
   timestamp: number;
 }
 
+export interface WakeBudgetExceededEvent {
+  kind?: 'budget-exceeded';
+  chainId: string;
+  roomId?: string;
+  initiatorAgentId?: string;
+  targetAgentId: string;
+  budget: number;
+  timestamp: number;
+}
+
 export interface WakeDepthExceededEvent {
   kind?: 'depth-exceeded';
   wakeId: string;
@@ -244,7 +254,7 @@ export interface WakeOrderSkipEvent {
   roomId?: string;
   initiatorAgentId?: string;
   targetAgentId: string;
-  reason: 'membership-denied' | 'agent-not-found' | 'timeout' | 'general-error';
+  reason: 'membership-denied' | 'agent-not-found' | 'timeout' | 'general-error' | 'mention-cap' | 'already-in-flight';
   errorMessage: string;
   timestamp: number;
   orderPosition: number;
@@ -303,6 +313,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('request-agent-wake', initiatorAgentId, targetAgentId, message, roomId, parentWakeId),
   cancelWake: (wakeId: string): Promise<CancelWakeResult> =>
     ipcRenderer.invoke('cancel-wake', wakeId),
+  onWakeBudgetExceeded: (callback: (event: WakeBudgetExceededEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, e: WakeBudgetExceededEvent) => callback(e);
+    ipcRenderer.on('wake-budget-exceeded', handler);
+    return () => ipcRenderer.removeListener('wake-budget-exceeded', handler);
+  },
   onWakeDepthExceeded: (callback: (event: WakeDepthExceededEvent) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, e: WakeDepthExceededEvent) => callback(e);
     ipcRenderer.on('wake-depth-exceeded', handler);
