@@ -1,3 +1,4 @@
+import { providerHttpError } from './error-text';
 import type { AgentProvider } from '../agent-bus';
 import { getProviderSecret } from '../secrets';
 
@@ -90,8 +91,8 @@ export class XAIProvider implements AgentProvider {
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`xAI API error ${response.status}: ${errorText}`);
+        await response.text().catch(() => '');
+        throw providerHttpError('xAI', response.status);
       }
 
       const data = (await response.json()) as XAIResponse;

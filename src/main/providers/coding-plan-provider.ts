@@ -1,3 +1,4 @@
+import { providerHttpError } from './error-text';
 import type { AgentProvider } from '../agent-bus';
 import { getProviderSecret } from '../secrets';
 
@@ -87,8 +88,8 @@ export class CodingPlanProvider implements AgentProvider {
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`Coding Plan API error ${response.status}: ${errorText}`);
+        await response.text().catch(() => '');
+        throw providerHttpError('Coding Plan', response.status);
       }
 
       const data = (await response.json()) as CodingPlanResponse;

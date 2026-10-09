@@ -1,3 +1,4 @@
+import { sanitizeErrorMessage } from './providers/error-text';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import { AgentBus } from './agent-bus';
@@ -363,7 +364,7 @@ ipcMain.handle('send-message-stream', async (event, agentId: string, message: st
     event.sender.send('message-stream-error', {
       id: messageId,
       agentId,
-      error: err instanceof Error ? err.message : 'Unknown error',
+      error: sanitizeErrorMessage(err instanceof Error ? err.message : 'Unknown error'),
     });
   });
 
@@ -640,7 +641,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
             id: messageId,
             roomId,
             agentId: senderId,
-            error: err instanceof Error ? err.message : 'Unknown error',
+            error: sanitizeErrorMessage(err instanceof Error ? err.message : 'Unknown error'),
           });
         });
       }
@@ -703,7 +704,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
       event.sender.send('room-stream-error', {
         id: `${Date.now()}-room-error`,
         roomId,
-        error: err instanceof Error ? err.message : 'Unknown error',
+        error: sanitizeErrorMessage(err instanceof Error ? err.message : 'Unknown error'),
       });
     });
   

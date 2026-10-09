@@ -1,3 +1,4 @@
+import { sanitizeErrorMessage } from './providers/error-text';
 export type StreamChunkCallback = (chunk: string, done: boolean) => void;
 
 export type WakeFailureReason = 'timeout' | 'membership-denied' | 'agent-not-found' | 'provider-not-found' | 'provider-unavailable' | 'general-error' | 'cancelled';
@@ -920,6 +921,9 @@ export class AgentBus {
   }
 
   private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent): void {
+    if ('errorMessage' in event && typeof event.errorMessage === 'string') {
+      event = { ...event, errorMessage: sanitizeErrorMessage(event.errorMessage) };
+    }
     if (this.onWakeEvent) {
       this.onWakeEvent(event);
     }

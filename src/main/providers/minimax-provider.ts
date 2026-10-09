@@ -1,3 +1,4 @@
+import { providerHttpError } from './error-text';
 import type { AgentProvider } from '../agent-bus';
 import { getProviderSecret } from '../secrets';
 
@@ -88,8 +89,8 @@ export class MiniMaxProvider implements AgentProvider {
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        throw new Error(`MiniMax API error ${response.status}: ${errorText}`);
+        await response.text().catch(() => '');
+        throw providerHttpError('MiniMax', response.status);
       }
 
       const data = (await response.json()) as MiniMaxResponse;
