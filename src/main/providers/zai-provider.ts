@@ -30,6 +30,7 @@ export class ZaiProvider implements AgentProvider {
 
     try {
       const response = await fetch(this.config.baseUrl!, {
+        signal: AbortSignal.timeout(30000),
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
