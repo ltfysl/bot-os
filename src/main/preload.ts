@@ -104,6 +104,10 @@ export interface RoomMessage {
   agentId?: string;
   agentName?: string;
   agentAvatar?: string;
+  wakeId?: string;
+  /** Set by the bus for wakes in an ordered chain (read-only for the renderer). */
+  initiatorAgentId?: string;
+  lineage?: { chainId: string; depth: number; initiatorAgentId?: string };
 }
 
 export interface RoomStreamChunk {
@@ -115,6 +119,9 @@ export interface RoomStreamChunk {
   chunk: string;
   done: boolean;
   wakeId?: string;
+  /** Set by the bus for wakes in an ordered chain (read-only for the renderer). */
+  initiatorAgentId?: string;
+  lineage?: { chainId: string; depth: number; initiatorAgentId?: string };
 }
 
 export interface RoomStreamError {

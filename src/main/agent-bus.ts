@@ -112,6 +112,12 @@ export interface AgentProvider {
   isAvailable(): Promise<boolean>;
 }
 
+export interface WakeLineage {
+  chainId: string;
+  depth: number;
+  initiatorAgentId?: string;
+}
+
 export interface AgentBusMessage {
   id: string;
   providerId: string;
@@ -156,11 +162,17 @@ export class AgentBus {
   private wakeQueueLimit: number;
   private wakeChains = new Map<string, {
     cancelled: boolean;
-    currentWakeId?: string;
-    remaining: string[];
+    running: number;
+    currentWakeIds: Set<string>;
+    remainingByLoop: Map<number, string[]>;
     roomId?: string;
     initiatorAgentId?: string;
   }>();
+  private wakeLoopCounter = 0;
+  /** Main-process-only lineage per wake, kept after the wake ends. Never read from the renderer. */
+  private wakeLineage = new Map<string, WakeLineage>();
+  private cancelledChains = new Set<string>();
+  private depthExceededChains = new Set<string>();
   private wakeChainCounter = 0;
   private onWakeEvent?: WakeEventCallback;
   private activeWakes: number = 0;
@@ -1084,26 +1096,57 @@ export class AgentBus {
     targets: Array<{ agentId: string; message: string }>,
     initiatorAgentId?: string,
     roomId?: string,
-    onChunk?: (wakeId: string, agentId: string, chunk: string, done: boolean) => void,
-    onComplete?: (wakeId: string, agentId: string, message: AgentBusMessage) => void,
-    chainId: string = this.createWakeChainId()
+    onChunk?: (wakeId: string, agentId: string, chunk: string, done: boolean, lineage?: WakeLineage) => void,
+    onComplete?: (wakeId: string, agentId: string, message: AgentBusMessage, lineage?: WakeLineage) => void,
+    chainId: string = this.createWakeChainId(),
+    depth: number = 1
   ): Promise<void> {
-    const chain = {
-      cancelled: false,
-      currentWakeId: undefined as string | undefined,
-      remaining: targets.map((t) => t.agentId),
-      roomId,
-      initiatorAgentId,
-    };
-    this.wakeChains.set(chainId, chain);
+    if (this.cancelledChains.has(chainId)) return;
+    let chain = this.wakeChains.get(chainId);
+    if (!chain) {
+      chain = {
+        cancelled: false,
+        running: 0,
+        currentWakeIds: new Set<string>(),
+        remainingByLoop: new Map<number, string[]>(),
+        roomId,
+        initiatorAgentId,
+      };
+      this.wakeChains.set(chainId, chain);
+    }
+    chain.running++;
+    const loopId = this.wakeLoopCounter++;
+    chain.remainingByLoop.set(loopId, targets.map((t) => t.agentId));
     try {
     for (let orderPosition = 0; orderPosition < targets.length; orderPosition++) {
       const target = targets[orderPosition];
       // Chain cancel: stop before starting the next target.
       if (chain.cancelled) break;
-      chain.remaining = targets.slice(orderPosition + 1).map((t) => t.agentId);
+      chain.remainingByLoop.set(loopId, targets.slice(orderPosition + 1).map((t) => t.agentId));
       const wakeId = this.generateWakeId(target.agentId, initiatorAgentId, roomId);
-      chain.currentWakeId = wakeId;
+
+      // Depth guard for reply-driven chains: never run past MAX_WAKE_DEPTH.
+      if (depth > AgentBus.MAX_WAKE_DEPTH) {
+        if (!this.depthExceededChains.has(chainId)) {
+          this.depthExceededChains.add(chainId);
+          this.emitWakeEvent({
+            kind: 'depth-exceeded',
+            wakeId,
+            roomId,
+            initiatorAgentId: initiatorAgentId || 'system',
+            targetAgentId: target.agentId,
+            depth,
+            maxDepth: AgentBus.MAX_WAKE_DEPTH,
+            timestamp: Date.now(),
+          });
+        }
+        continue;
+      }
+
+      const lineage: WakeLineage = { chainId, depth, initiatorAgentId };
+      this.rememberLineage(wakeId, lineage);
+      chain.currentWakeIds.add(wakeId);
+      let replyContent = '';
 
       const emitSkip = (reason: WakeOrderSkipEvent['reason'], errorMessage: string) => {
         this.emitWakeEvent({
@@ -1175,6 +1218,7 @@ export class AgentBus {
           initiatorAgentId,
           roomId,
           cancelled: false,
+          depth,
         });
         this.emitWakeEvent({
           kind: 'started',
@@ -1210,7 +1254,12 @@ export class AgentBus {
                     if (still?.cancelled) {
                       throw new Error('Wake cancelled');
                     }
-                    onChunk(wakeId, target.agentId, chunk, done);
+                    if (!done) {
+                      replyContent += chunk;
+                    } else if (chunk) {
+                      replyContent = chunk;
+                    }
+                    onChunk(wakeId, target.agentId, chunk, done, lineage);
                   }
                 );
                 this.emitWakeEvent({
@@ -1228,8 +1277,9 @@ export class AgentBus {
                 if (this.activeWakeIds.get(wakeId)?.cancelled) {
                   throw new Error('Wake cancelled');
                 }
+                replyContent = response.content;
                 if (onComplete) {
-                  onComplete(wakeId, target.agentId, response);
+                  onComplete(wakeId, target.agentId, response, lineage);
                 }
                 this.emitWakeEvent({
                   kind: 'success',
@@ -1249,7 +1299,10 @@ export class AgentBus {
           initiatorAgentId,
           roomId
         );
+        chain.currentWakeIds.delete(wakeId);
+        this.fanOutReplyMentions(replyContent, target.agentId, roomId, chainId, depth, onChunk, onComplete);
       } catch (err) {
+        chain.currentWakeIds.delete(wakeId);
         console.error(`Ordered wake failed for ${target.agentId} (position ${orderPosition}):`, err);
         this.activeWakeIds.delete(wakeId);
         const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -1271,9 +1324,46 @@ export class AgentBus {
       }
     }
     } finally {
-      chain.currentWakeId = undefined;
-      this.wakeChains.delete(chainId);
+      chain.remainingByLoop.delete(loopId);
+      chain.running--;
+      if (chain.running <= 0) this.wakeChains.delete(chainId);
     }
+  }
+
+  private rememberLineage(wakeId: string, lineage: WakeLineage): void {
+    this.wakeLineage.set(wakeId, lineage);
+    if (this.wakeLineage.size > 1000) {
+      const oldest = this.wakeLineage.keys().next().value;
+      if (oldest !== undefined) this.wakeLineage.delete(oldest);
+    }
+  }
+
+  /** Main-process lineage for a wake (survives the wake ending). */
+  getWakeLineage(wakeId: string): WakeLineage | undefined {
+    return this.wakeLineage.get(wakeId);
+  }
+
+  /**
+   * A finished reply that @mentions other agents wakes them in the same chain at depth + 1.
+   * Lineage comes from the bus's own record of the parent wake, never from the renderer.
+   * Self-mentions are ignored; membership is enforced by enqueueOrderedWakes.
+   */
+  private fanOutReplyMentions(
+    replyContent: string,
+    replyingAgentId: string,
+    roomId: string | undefined,
+    chainId: string,
+    parentDepth: number,
+    onChunk?: (wakeId: string, agentId: string, chunk: string, done: boolean, lineage?: WakeLineage) => void,
+    onComplete?: (wakeId: string, agentId: string, message: AgentBusMessage, lineage?: WakeLineage) => void
+  ): void {
+    if (!replyContent || this.cancelledChains.has(chainId)) return;
+    const targets = Array.from(new Set(this.extractMentions(replyContent)))
+      .filter((id) => id !== replyingAgentId)
+      .map((agentId) => ({ agentId, message: replyContent }));
+    if (targets.length === 0) return;
+    void this.enqueueOrderedWakes(targets, replyingAgentId, roomId, onChunk, onComplete, chainId, parentDepth + 1)
+      .catch((err) => console.error(`Reply mention fan-out failed in chain ${chainId}:`, err));
   }
 
   /** Deepest active wake that targets the initiator, plus an optional caller hint. */
@@ -1303,15 +1393,16 @@ export class AgentBus {
    */
   cancelWakeChain(chainId: string): { cancelled: boolean; cancelledWakeId?: string; skippedAgentIds: string[] } {
     const chain = this.wakeChains.get(chainId);
-    if (!chain || chain.cancelled) {
+    if (!chain || chain.cancelled || this.cancelledChains.has(chainId)) {
       return { cancelled: false, skippedAgentIds: [] };
     }
     chain.cancelled = true;
-    const skippedAgentIds = [...chain.remaining];
-    const cancelledWakeId = chain.currentWakeId;
-    if (cancelledWakeId) {
-      this.cancelWake(cancelledWakeId);
-    }
+    // Persist so reply-driven wakes spawned later in this chain never start.
+    this.cancelledChains.add(chainId);
+    const skippedAgentIds = Array.from(chain.remainingByLoop.values()).flat();
+    const inFlight = Array.from(chain.currentWakeIds);
+    for (const id of inFlight) this.cancelWake(id);
+    const cancelledWakeId = inFlight[0];
     this.emitWakeEvent({
       kind: 'chain-cancelled',
       chainId,
@@ -1323,6 +1414,7 @@ export class AgentBus {
     });
     return { cancelled: true, cancelledWakeId, skippedAgentIds };
   }
+
 
   cancelWake(wakeId: string): { cancelled: boolean; wasActive: boolean; wasQueued: boolean } {
     // Queue first: wakes are pre-registered in activeWakeIds before enqueue.

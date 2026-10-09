@@ -568,7 +568,7 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
       senderId || 'system',
       roomId,
       undefined,
-      (wakeId, agentId, response) => {
+      (wakeId, agentId, response, lineage) => {
         const agent = agentBus.getAgent(agentId);
         const assistantMessage = {
           id: response.id,
@@ -580,6 +580,9 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
           agentName: agent?.name,
           agentAvatar: agent?.avatar,
           wakeId,
+          // From the bus's own record; the renderer only reads it (for "via @Agent").
+          initiatorAgentId: lineage?.initiatorAgentId,
+          lineage,
         };
         roomManager.addRoomMessage(assistantMessage);
         roomManager.incrementUnread(roomId);
@@ -680,7 +683,7 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
       streamTargets,
       senderId || 'system',
       roomId,
-      (wakeId, agentId, chunk, done) => {
+      (wakeId, agentId, chunk, done, lineage) => {
         const agent = agentBus.getAgent(agentId);
         const messageId = `${wakeId}`;
         const prev = accumulatedByWake.get(wakeId) || '';
@@ -702,6 +705,8 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
           chunk,
           done,
           wakeId,
+          initiatorAgentId: lineage?.initiatorAgentId,
+          lineage,
         });
 
         if (done) {
@@ -717,6 +722,8 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
             agentName: agent?.name,
             agentAvatar: agent?.avatar,
             wakeId,
+            initiatorAgentId: lineage?.initiatorAgentId,
+            lineage,
           };
           roomManager.addRoomMessage(assistantMessage);
           roomManager.incrementUnread(roomId);
