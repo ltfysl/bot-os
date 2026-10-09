@@ -76,8 +76,7 @@ export default function MessageList({ messages, streamingMessage, isLoading, age
   }, [messages, streamingMessage, widgetRequest, wakeErrors]);
 
   const lastAssistantMessage = messages.filter((m) => m.role === 'assistant').at(-1);
-  const hasAssistantMessage = lastAssistantMessage !== undefined;
-  const useNeutralChrome = !hasAssistantMessage && !agentName && !agentAvatar;
+  const pendingAgentKnown = Boolean(agentName);
 
   const showEmptyState = messages.length === 0 && !widgetRequest && !isLoading && !streamingMessage;
 
@@ -176,12 +175,14 @@ export default function MessageList({ messages, streamingMessage, isLoading, age
       {streamingMessage && (
         <div className="message assistant">
           <div className="message-avatar">
-            {renderAvatar('assistant', streamingMessage.agentAvatar)}
+            {streamingMessage.agentName
+              ? renderAvatar('assistant', streamingMessage.agentAvatar)
+              : renderAvatar('assistant', undefined, true)}
           </div>
           <div className="message-content">
             <div className="message-header">
               <span className="message-author">
-                {streamingMessage.agentName || 'Assistant'}
+                {streamingMessage.agentName || '…'}
               </span>
             </div>
             <div className="message-text streaming">
@@ -194,16 +195,17 @@ export default function MessageList({ messages, streamingMessage, isLoading, age
       {isLoading && !streamingMessage && (
         <div className="message assistant">
           <div className="message-avatar">
-            {useNeutralChrome ? (
-              renderAvatar('assistant', undefined, true)
+            {/* Only the agent the caller knows is replying; never guess from history. */}
+            {pendingAgentKnown ? (
+              renderAvatar('assistant', agentAvatar)
             ) : (
-              renderAvatar('assistant', lastAssistantMessage?.agentAvatar || agentAvatar)
+              renderAvatar('assistant', undefined, true)
             )}
           </div>
           <div className="message-content">
             <div className="message-header">
               <span className="message-author">
-                {useNeutralChrome ? '…' : (lastAssistantMessage?.agentName || agentName || 'Assistant')}
+                {pendingAgentKnown ? agentName : '…'}
               </span>
             </div>
             <div className="message-text" style={{ opacity: 0.5 }}>

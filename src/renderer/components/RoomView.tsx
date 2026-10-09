@@ -36,6 +36,25 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
   const [loadingTimeoutId, setLoadingTimeoutId] = useState<number | undefined>(undefined);
   const [wakeErrors, setWakeErrors] = useState<WakeErrorEvent[]>([]);
   const [backpressureState, setBackpressureState] = useState<WakeBackpressureEvent | null>(null);
+  // Agent the bus says is replying right now (from wake-started). Null means show neutral chrome.
+  const [pendingAgent, setPendingAgent] = useState<{ name: string; avatar?: string } | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onWakeStarted((event) => {
+      if (event.roomId !== room.id) return;
+      const target = agents.find((a) => a.id === event.targetAgentId);
+      setPendingAgent(target ? { name: target.name, avatar: target.avatar } : null);
+    });
+    return () => unsubscribe();
+  }, [room.id, agents]);
+
+  useEffect(() => {
+    if (!isLoading) setPendingAgent(null);
+  }, [isLoading]);
+
+  useEffect(() => {
+    setPendingAgent(null);
+  }, [room.id]);
 
   useEffect(() => {
     loadMessages();
@@ -353,7 +372,6 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
     return avatar.length >= 2 ? avatar.substring(0, 2).toUpperCase() : 'AG';
   };
 
-  const lastAssistantMessage = messages.slice().reverse().find(m => m.role === 'assistant');
   
   const messagesAsGeneric: Message[] = messages.map(msg => ({
     id: msg.id,
@@ -401,8 +419,8 @@ export default function RoomView({ room, agents, onRoomUpdate }: RoomViewProps) 
             messages={messagesAsGeneric}
             streamingMessage={streamingAsGeneric} 
             isLoading={isLoading} 
-            agentName={lastAssistantMessage?.agentName}
-            agentAvatar={lastAssistantMessage?.agentAvatar}
+            agentName={pendingAgent?.name}
+            agentAvatar={pendingAgent?.avatar}
             wakeErrors={wakeErrors}
           />
         )}
