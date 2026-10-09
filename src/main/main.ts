@@ -80,6 +80,17 @@ app.whenReady().then(async () => {
           activeWakes: event.activeWakes,
           timestamp: event.timestamp,
         });
+      } else if ('kind' in event && event.kind === 'depth-exceeded') {
+        mainWindow.webContents.send('wake-depth-exceeded', {
+          wakeId: event.wakeId,
+          parentWakeId: event.parentWakeId,
+          roomId: event.roomId,
+          initiatorAgentId: event.initiatorAgentId,
+          targetAgentId: event.targetAgentId,
+          depth: event.depth,
+          maxDepth: event.maxDepth,
+          timestamp: event.timestamp,
+        });
       } else if ('kind' in event && event.kind === 'chain-cancelled') {
         mainWindow.webContents.send('wake-chain-cancelled', {
           chainId: event.chainId,
@@ -731,9 +742,9 @@ ipcMain.handle('clear-room-unread', async (_event, roomId: string) => {
   return { success: true };
 });
 
-ipcMain.handle('request-agent-wake', async (_event, initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string) => {
+ipcMain.handle('request-agent-wake', async (_event, initiatorAgentId: string, targetAgentId: string, message: string, roomId?: string, parentWakeId?: string) => {
   try {
-    const { wakeId } = await agentBus.requestAgentWake(initiatorAgentId, targetAgentId, message, roomId);
+    const { wakeId } = await agentBus.requestAgentWake(initiatorAgentId, targetAgentId, message, roomId, typeof parentWakeId === 'string' ? parentWakeId : undefined);
     return { success: true, wakeId };
   } catch (error) {
     return { 
