@@ -371,12 +371,14 @@ ipcMain.handle('send-message-stream', async (event, agentId: string, message: st
         done,
         targetAgentId: agentId,
         wakeId,
+        senderAgentId: streamAgentId,
       });
     },
     (wokeAgentId, chunk, done, wakeId) => {
       const wokeAgent = agentBus.getAgent(wokeAgentId);
       if (wokeAgent) {
-        const wakeMessageId = `${Date.now()}-${wokeAgentId}`;
+        // Stable per wake so the renderer can grow one bubble in place.
+        const wakeMessageId = wakeId ?? `${Date.now()}-${wokeAgentId}`;
         event.sender.send('wake-stream-chunk', {
           id: wakeMessageId,
           agentId: wokeAgentId,
@@ -386,6 +388,8 @@ ipcMain.handle('send-message-stream', async (event, agentId: string, message: st
           done,
           targetAgentId: agentId,
           wakeId,
+          // Who wrote this chunk; targetAgentId is who the user addressed.
+          senderAgentId: wokeAgentId,
         });
       }
     }

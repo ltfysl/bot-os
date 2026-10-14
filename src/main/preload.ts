@@ -20,6 +20,8 @@ export interface StreamChunk {
   done: boolean;
   targetAgentId?: string;
   wakeId?: string;
+  /** Agent that authored this chunk. Use it, not targetAgentId, for attribution. */
+  senderAgentId?: string;
 }
 
 export interface StreamResponse {
