@@ -569,8 +569,13 @@ export class AgentBus {
     onChunk: (wokeAgentId: string, chunk: string, done: boolean, wakeId?: string) => void,
     wakeId?: string
   ): Promise<void> {
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => {
+    // Once wake-timeout fired the wake is over for the UI: drop any later chunk,
+    // including done:true, so a slow provider cannot stream into a closed slot (Remy #58 soft 1).
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        timedOut = true;
         this.emitWakeEvent({
           wakeId,
           targetAgentId: wokeAgentId,
@@ -579,12 +584,22 @@ export class AgentBus {
           timestamp: Date.now(),
         });
         reject(new Error('Wake timeout'));
-      }, 5000)
-    );
+      }, 5000);
+    });
+    const guardedOnChunk: typeof onChunk = (id, chunk, done, wId) => {
+      if (timedOut) return;
+      onChunk(id, chunk, done, wId);
+    };
 
-    const wakePromise = this._wakeAgentStreamInternal(wokeAgentId, originalMessage, wakerId, onChunk, wakeId);
+    const wakePromise = this._wakeAgentStreamInternal(wokeAgentId, originalMessage, wakerId, guardedOnChunk, wakeId);
+    // The losing wake promise may still reject later; keep that from surfacing as unhandled.
+    wakePromise.catch(() => {});
 
-    await Promise.race([wakePromise, timeoutPromise]);
+    try {
+      await Promise.race([wakePromise, timeoutPromise]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private async _wakeAgentStreamInternal(
