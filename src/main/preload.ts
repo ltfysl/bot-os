@@ -133,6 +133,8 @@ export interface RoomStreamError {
   roomId: string;
   agentId?: string;
   error: string;
+  /** Wake the error belongs to, also when it failed before the first chunk. */
+  wakeId?: string;
 }
 
 export type WidgetType = 'single-select' | 'multi-select' | 'danger' | 'allow-custom';

@@ -389,6 +389,33 @@ export class AgentBus {
     onPrimaryChunk: (agentId: string, chunk: string, done: boolean, wakeId?: string) => void,
     onWakeChunk?: (wokeAgentId: string, chunk: string, done: boolean, wakeId?: string) => void
   ): Promise<void> {
+    const roomId = context?.room as string | undefined || context?.roomId as string | undefined;
+    // Room fan-out uses this method with the target as primary — mint its wakeId up front so a
+    // failure before the first chunk still carries it (Remy #58 soft for #59).
+    // Ordered fan-out (`skipWakeFanOut`) already registered its own wakeId.
+    const primaryWakeId: string | undefined =
+      roomId && !context?.skipWakeFanOut
+        ? `wake-${Date.now()}-${agentId}-${Math.random().toString(36).slice(2, 9)}`
+        : undefined;
+    try {
+      await this.streamPrimaryWithWakes(message, agentId, context, roomId, primaryWakeId, onPrimaryChunk, onWakeChunk);
+    } catch (err) {
+      if (primaryWakeId && err instanceof Error) {
+        (err as Error & { wakeId?: string }).wakeId = primaryWakeId;
+      }
+      throw err;
+    }
+  }
+
+  private async streamPrimaryWithWakes(
+    message: string,
+    agentId: string,
+    context: Record<string, unknown> | undefined,
+    roomId: string | undefined,
+    primaryWakeId: string | undefined,
+    onPrimaryChunk: (agentId: string, chunk: string, done: boolean, wakeId?: string) => void,
+    onWakeChunk?: (wokeAgentId: string, chunk: string, done: boolean, wakeId?: string) => void
+  ): Promise<void> {
     const primaryAgent = this.agents.get(agentId);
     if (!primaryAgent) {
       throw new Error(`Agent not found: ${agentId}`);
@@ -404,12 +431,8 @@ export class AgentBus {
       throw new Error(`Provider not available: ${primaryAgent.providerId}`);
     }
 
-    const roomId = context?.room as string | undefined || context?.roomId as string | undefined;
-    // Room fan-out uses this method with the target as primary — register a wakeId so Square can cancel.
-    // Ordered fan-out (`skipWakeFanOut`) already registered its own wakeId.
-    let primaryWakeId: string | undefined;
-    if (roomId && !context?.skipWakeFanOut) {
-      primaryWakeId = `wake-${Date.now()}-${agentId}-${Math.random().toString(36).slice(2, 9)}`;
+    // Register the pre-minted primary wakeId so Square can cancel it.
+    if (primaryWakeId) {
       this.activeWakeIds.set(primaryWakeId, {
         targetAgentId: agentId,
         initiatorAgentId: undefined,

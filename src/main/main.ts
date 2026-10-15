@@ -679,8 +679,11 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
           }
         ).catch((err) => {
           console.error(`Failed to send stream message from agent ${senderId}:`, err);
+          // Before the first chunk only the error knows the wakeId.
+          const failedWakeId = (err as { wakeId?: string } | undefined)?.wakeId;
           event.sender.send('room-stream-error', {
-            id: messageId,
+            id: failedWakeId ?? messageId,
+            wakeId: failedWakeId,
             roomId,
             agentId: senderId,
             error: sanitizeErrorMessage(err instanceof Error ? err.message : 'Unknown error'),
