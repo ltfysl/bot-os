@@ -1222,6 +1222,13 @@ export class AgentBus {
         });
       };
 
+      // A target refused before it starts costs no budget and is not in flight.
+      const releaseUnstarted = () => {
+        budget.wakes--;
+        budget.inFlight.delete(target.agentId);
+        chain.currentWakeIds.delete(wakeId);
+      };
+
       try {
         if (roomId) {
           const { RoomManager } = require('./rooms');
@@ -1236,7 +1243,8 @@ export class AgentBus {
               denialReason: 'target-not-member',
               timestamp: Date.now(),
             });
-            emitSkip('membership-denied', 'Room manager not initialized');
+            // One signal only: wake-membership-denied. No extra order-skip.
+            releaseUnstarted();
             continue;
           }
 
@@ -1250,7 +1258,8 @@ export class AgentBus {
               denialReason: 'target-not-member',
               timestamp: Date.now(),
             });
-            emitSkip('membership-denied', `Room not found: ${roomId}`);
+            // One signal only: wake-membership-denied. No extra order-skip.
+            releaseUnstarted();
             continue;
           }
 
@@ -1263,12 +1272,14 @@ export class AgentBus {
               denialReason: 'target-not-member',
               timestamp: Date.now(),
             });
-            emitSkip('membership-denied', `Target agent ${target.agentId} is not a member of room ${roomId}`);
+            // One signal only: wake-membership-denied. No extra order-skip.
+            releaseUnstarted();
             continue;
           }
         }
 
         if (!this.agents.get(target.agentId)) {
+          releaseUnstarted();
           emitSkip('agent-not-found', `Agent not found: ${target.agentId}`);
           continue;
         }
