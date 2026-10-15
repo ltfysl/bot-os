@@ -93,6 +93,7 @@ export interface WakeChainCancelledEvent {
 export interface WakeDepthExceededEvent {
   kind: 'depth-exceeded';
   wakeId: string;
+  chainId?: string;
   parentWakeId?: string;
   roomId?: string;
   initiatorAgentId: string;
@@ -187,6 +188,10 @@ export class AgentBus {
   private chainBudget = new Map<string, { wakes: number; exceeded: boolean; inFlight: Set<string> }>();
   static readonly MAX_CHAIN_WAKES = 8;
   static readonly MAX_MENTIONS_PER_REPLY = 3;
+  /** requestAgentWake without a known parent chain joins the initiator's live root chain. */
+  private requestRootChains = new Map<string, string>();
+  /** requestAgentWake targets per chain and per parent wake (mention cap for bot-requested wakes). */
+  private requestTargets = new Map<string, Map<string, Set<string>>>();
   private wakeChainCounter = 0;
   private onWakeEvent?: WakeEventCallback;
   private activeWakes: number = 0;
@@ -684,10 +689,12 @@ export class AgentBus {
     // Depth guard: the bus derives the parent itself. A caller-supplied parent can only
     // raise the depth, never lower it, so omitting it does not reset the chain to 0.
     const { depth, parent } = this.resolveWakeDepth(initiatorAgentId, parentWakeId);
+    const parentChainId = parent ? this.wakeLineage.get(parent)?.chainId : undefined;
     if (depth > AgentBus.MAX_WAKE_DEPTH) {
       this.emitWakeEvent({
         kind: 'depth-exceeded',
         wakeId: earlyWakeId,
+        chainId: parentChainId,
         parentWakeId: parent,
         roomId,
         initiatorAgentId,
@@ -770,7 +777,71 @@ export class AgentBus {
 
     const wakeContext = `Bot-initiated wake from agent ${initiatorAgentId}: ${message}`;
     const wakeId = earlyWakeId;
-    
+
+    // One budget for every bot-triggered wake: same chain budget (8), in-flight dedupe and
+    // mention cap (3 targets per parent) as reply @mentions (Remy #57 soft 1).
+    const chainId = parentChainId ?? this.requestRootChain(initiatorAgentId, roomId);
+    const chain = this.ensureChain(chainId, roomId, initiatorAgentId);
+    if (chain.cancelled || this.cancelledChains.has(chainId)) {
+      throw new Error(`Wake chain cancelled: ${chainId}`);
+    }
+    const budget = this.getChainBudget(chainId);
+    const skip = (reason: WakeOrderSkipEvent['reason'], errorMessage: string): never => {
+      this.emitWakeEvent({
+        kind: 'order-skip',
+        wakeId,
+        roomId,
+        initiatorAgentId,
+        targetAgentId,
+        reason,
+        errorMessage,
+        timestamp: Date.now(),
+        orderPosition: -1,
+      });
+      throw new Error(errorMessage);
+    };
+    if (budget.inFlight.has(targetAgentId)) {
+      skip('already-in-flight', `Agent ${targetAgentId} is already running in this chain`);
+    }
+    let perChain = this.requestTargets.get(chainId);
+    if (!perChain) { perChain = new Map(); this.requestTargets.set(chainId, perChain); }
+    const capKey = parent ?? `root:${initiatorAgentId}`;
+    let targetsForParent = perChain.get(capKey);
+    if (!targetsForParent) { targetsForParent = new Set(); perChain.set(capKey, targetsForParent); }
+    if (!targetsForParent.has(targetAgentId) && targetsForParent.size >= AgentBus.MAX_MENTIONS_PER_REPLY) {
+      skip('mention-cap', `Only ${AgentBus.MAX_MENTIONS_PER_REPLY} mentions per reply wake agents`);
+    }
+    if (budget.wakes >= AgentBus.MAX_CHAIN_WAKES) {
+      if (!budget.exceeded) {
+        budget.exceeded = true;
+        this.emitWakeEvent({
+          kind: 'budget-exceeded',
+          chainId,
+          roomId,
+          initiatorAgentId,
+          targetAgentId,
+          budget: AgentBus.MAX_CHAIN_WAKES,
+          timestamp: Date.now(),
+        });
+      }
+      throw new Error(`Wake budget exceeded for chain ${chainId}`);
+    }
+    budget.wakes++;
+    budget.inFlight.add(targetAgentId);
+    targetsForParent.add(targetAgentId);
+    chain.running++;
+    chain.currentWakeIds.add(wakeId);
+    this.rememberLineage(wakeId, { chainId, depth, initiatorAgentId });
+    let released = false;
+    const releaseChain = () => {
+      if (released) return;
+      released = true;
+      budget.inFlight.delete(targetAgentId);
+      chain.currentWakeIds.delete(wakeId);
+      chain.running--;
+      if (chain.running <= 0) this.endChain(chainId);
+    };
+
     this.activeWakeIds.set(wakeId, {
       targetAgentId,
       initiatorAgentId,
@@ -781,6 +852,7 @@ export class AgentBus {
     this.emitWakeEvent({
       kind: 'started',
       wakeId,
+      chainId,
       targetAgentId,
       initiatorAgentId,
       roomId,
@@ -841,11 +913,16 @@ export class AgentBus {
         throw err;
       } finally {
         this.activeWakeIds.delete(wakeId);
+        releaseChain();
       }
     };
 
     // Soft (Remy): return wakeId immediately; do not await wake completion.
-    void this.enqueueWake(targetAgentId, wakeFn, wakeId, initiatorAgentId, roomId);
+    void this.enqueueWake(targetAgentId, wakeFn, wakeId, initiatorAgentId, roomId).catch(() => {
+      // Rejected before wakeFn ran (queue full / cancelled while queued): free the slot here.
+      this.activeWakeIds.delete(wakeId);
+      releaseChain();
+    });
     return { wakeId };
   }
 
@@ -1166,18 +1243,7 @@ export class AgentBus {
     depth: number = 1
   ): Promise<void> {
     if (this.cancelledChains.has(chainId)) return;
-    let chain = this.wakeChains.get(chainId);
-    if (!chain) {
-      chain = {
-        cancelled: false,
-        running: 0,
-        currentWakeIds: new Set<string>(),
-        remainingByLoop: new Map<number, string[]>(),
-        roomId,
-        initiatorAgentId,
-      };
-      this.wakeChains.set(chainId, chain);
-    }
+    const chain = this.ensureChain(chainId, roomId, initiatorAgentId);
     chain.running++;
     const loopId = this.wakeLoopCounter++;
     chain.remainingByLoop.set(loopId, targets.map((t) => t.agentId));
@@ -1196,6 +1262,7 @@ export class AgentBus {
           this.emitWakeEvent({
             kind: 'depth-exceeded',
             wakeId,
+            chainId,
             roomId,
             initiatorAgentId: initiatorAgentId || 'system',
             targetAgentId: target.agentId,
@@ -1437,14 +1504,46 @@ export class AgentBus {
     } finally {
       chain.remainingByLoop.delete(loopId);
       chain.running--;
-      if (chain.running <= 0) {
-        // Chain is over (all loops, incl. reply fan-out, have finished): free its guards.
-        this.wakeChains.delete(chainId);
-        this.chainBudget.delete(chainId);
-        this.depthExceededChains.delete(chainId);
-        this.cancelledChains.delete(chainId);
-      }
+      if (chain.running <= 0) this.endChain(chainId);
     }
+  }
+
+  private ensureChain(chainId: string, roomId?: string, initiatorAgentId?: string) {
+    let chain = this.wakeChains.get(chainId);
+    if (!chain) {
+      chain = {
+        cancelled: false,
+        running: 0,
+        currentWakeIds: new Set<string>(),
+        remainingByLoop: new Map<number, string[]>(),
+        roomId,
+        initiatorAgentId,
+      };
+      this.wakeChains.set(chainId, chain);
+    }
+    return chain;
+  }
+
+  /** Chain is over (all loops, reply fan-out and requested wakes finished): free its guards. */
+  private endChain(chainId: string): void {
+    this.wakeChains.delete(chainId);
+    this.chainBudget.delete(chainId);
+    this.depthExceededChains.delete(chainId);
+    this.cancelledChains.delete(chainId);
+    this.requestTargets.delete(chainId);
+    for (const [key, id] of this.requestRootChains) {
+      if (id === chainId) this.requestRootChains.delete(key);
+    }
+  }
+
+  /** Live root chain for bot-requested wakes of one initiator in one room/DM. */
+  private requestRootChain(initiatorAgentId: string, roomId?: string): string {
+    const key = `${initiatorAgentId}|${roomId ?? ''}`;
+    const existing = this.requestRootChains.get(key);
+    if (existing && this.wakeChains.has(existing)) return existing;
+    const chainId = this.createWakeChainId();
+    this.requestRootChains.set(key, chainId);
+    return chainId;
   }
 
   private getChainBudget(chainId: string): { wakes: number; exceeded: boolean; inFlight: Set<string> } {

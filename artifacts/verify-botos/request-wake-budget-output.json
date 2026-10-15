@@ -1,0 +1,30 @@
+{
+  "burst12": {
+    "started": 3,
+    "sameChain": true,
+    "inFlightSkips": 2,
+    "mentionCapSkips": 7,
+    "refused": 9,
+    "chainFreedAfterEnd": true
+  },
+  "tree": {
+    "started": 8,
+    "sameChain": true,
+    "budgetExceeded": 1,
+    "budgetExceededChainId": true,
+    "wakeCount": 8,
+    "budgetFreedAfterEnd": true,
+    "freshChainAfterEnd": true
+  },
+  "depth": {
+    "started": 4,
+    "depthExceeded": 1,
+    "chainIdOnDepthExceeded": true
+  },
+  "cancel": {
+    "cancelled": true,
+    "wakeCancelled": 2,
+    "budgetFreed": true
+  },
+  "pass": true
+}
