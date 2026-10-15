@@ -1,0 +1,50 @@
+{
+  "dmPrimary": {
+    "chunks": 4,
+    "withSender": 4,
+    "senders": [
+      "1"
+    ],
+    "idsEqualWakeId": false,
+    "distinctIds": 1
+  },
+  "dmWoken": {
+    "chunks": 4,
+    "withSender": 4,
+    "senders": [
+      "3"
+    ],
+    "idsEqualWakeId": true,
+    "distinctIds": 1
+  },
+  "roomPrimary": {
+    "chunks": 4,
+    "withSender": 4,
+    "senders": [
+      "1"
+    ],
+    "idsEqualWakeId": true,
+    "distinctIds": 1
+  },
+  "roomMultiMention": {
+    "chunks": 8,
+    "withSender": 8,
+    "senders": [
+      "1",
+      "3"
+    ],
+    "idsEqualWakeId": true,
+    "distinctIds": 2
+  },
+  "roomBotToBot": {
+    "chunks": 8,
+    "withSender": 8,
+    "senders": [
+      "1",
+      "3"
+    ],
+    "idsEqualWakeId": true,
+    "distinctIds": 2
+  },
+  "persistedAssistantIdsAreWakeIds": true
+}

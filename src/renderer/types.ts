@@ -18,6 +18,8 @@ export interface StreamChunk {
   done: boolean;
   targetAgentId?: string;
   wakeId?: string;
+  /** Agent that authored this chunk. Use it, not targetAgentId, for attribution. */
+  senderAgentId?: string;
 }
 
 export interface StreamResponse {
@@ -251,6 +253,8 @@ export interface RoomStreamChunk {
   chunk: string;
   done: boolean;
   wakeId?: string;
+  /** Agent that authored this chunk. */
+  senderAgentId?: string;
   /** Set by the bus for wakes in an ordered chain (read-only for the renderer). */
   initiatorAgentId?: string;
   lineage?: { chainId: string; depth: number; initiatorAgentId?: string };
