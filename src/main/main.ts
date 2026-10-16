@@ -92,12 +92,24 @@ app.whenReady().then(async () => {
       } else if ('kind' in event && event.kind === 'depth-exceeded') {
         mainWindow.webContents.send('wake-depth-exceeded', {
           wakeId: event.wakeId,
+          chainId: event.chainId,
           parentWakeId: event.parentWakeId,
           roomId: event.roomId,
           initiatorAgentId: event.initiatorAgentId,
           targetAgentId: event.targetAgentId,
           depth: event.depth,
           maxDepth: event.maxDepth,
+          timestamp: event.timestamp,
+        });
+      } else if ('kind' in event && event.kind === 'user-queued') {
+        mainWindow.webContents.send('wake-user-queued', {
+          wakeId: event.wakeId,
+          chainId: event.chainId,
+          fromChainId: event.fromChainId,
+          targetAgentId: event.targetAgentId,
+          initiatorAgentId: event.initiatorAgentId,
+          roomId: event.roomId,
+          waitingForWakeIds: event.waitingForWakeIds,
           timestamp: event.timestamp,
         });
       } else if ('kind' in event && event.kind === 'chain-cancelled') {
@@ -601,7 +613,9 @@ ipcMain.handle('send-room-message', async (event, roomId: string, content: strin
         roomManager.incrementUnread(roomId);
         event.sender.send('room-fan-in-response', assistantMessage);
       },
-      chainId
+      chainId,
+      1,
+      { userMessage: true }
     )
     .catch((err) => {
       console.error(`Ordered room fan-out failed in room ${roomId}:`, err);
@@ -750,7 +764,9 @@ ipcMain.handle('send-room-message-stream', async (event, roomId: string, content
         }
       },
       undefined,
-      streamChainId
+      streamChainId,
+      1,
+      { userMessage: true }
     )
     .catch((err) => {
       console.error(`Ordered room stream fan-out failed in room ${roomId}:`, err);

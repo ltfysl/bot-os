@@ -113,7 +113,26 @@ export interface WakeBudgetExceededEvent {
   timestamp: number;
 }
 
-export type WakeEventCallback = (event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent | WakeChainCancelledEvent | WakeDepthExceededEvent | WakeBudgetExceededEvent) => void;
+/**
+ * A user message reached an agent that already has a wake in flight. It is never dropped:
+ * it waits on its own new chain (own budget) and runs right after the wakes listed here.
+ */
+export interface WakeUserQueuedEvent {
+  kind: 'user-queued';
+  wakeId: string;
+  chainId: string;
+  /** Chain the user message came in on (the room fan-out chain), if any. */
+  fromChainId?: string;
+  targetAgentId: string;
+  initiatorAgentId?: string;
+  roomId?: string;
+  waitingForWakeIds: string[];
+  timestamp: number;
+}
+
+export type WakeEvent = WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent | WakeChainCancelledEvent | WakeDepthExceededEvent | WakeBudgetExceededEvent | WakeUserQueuedEvent;
+
+export type WakeEventCallback = (event: WakeEvent) => void;
 
 export interface AgentProvider {
   id: string;
@@ -212,6 +231,13 @@ export class AgentBus {
   }> = new Map();
   private wakeIdCounter: number = 0;
   static readonly MAX_WAKE_DEPTH = 4;
+  /**
+   * Per agent: what is running on it right now (any chain), keyed by wakeId, plus user messages
+   * already waiting for it (`queued:<wakeId>`). A new user message waits for exactly this snapshot.
+   */
+  private agentActivity = new Map<string, Map<string, Promise<void>>>();
+  /** User messages waiting for their agent; cancelWake/cancelWakeChain reach them here. */
+  private userQueued = new Map<string, { targetAgentId: string; chainId: string; initiatorAgentId?: string; roomId?: string; cancel: () => void }>();
 
   constructor(config: AgentBusConfig) {
     this.providers = new Map(config.providers.map((p) => [p.id, p]));
@@ -265,7 +291,14 @@ export class AgentBus {
       throw new Error(`Agent not found: ${agentId}`);
     }
 
-    const primary = await this.sendMessage(message, agentId, context);
+    const primary = context?.skipWakeFanOut
+      ? await this.sendMessage(message, agentId, context)
+      : await this.runUserTurn(
+          agentId,
+          (context?.room as string | undefined) || (context?.roomId as string | undefined),
+          this.generateWakeId(agentId),
+          () => this.sendMessage(message, agentId, context)
+        );
     primary.agentId = agentId;
     primary.agentName = primaryAgent.name;
     primary.agentAvatar = primaryAgent.avatar;
@@ -436,6 +469,7 @@ export class AgentBus {
       throw new Error(`Provider not available: ${primaryAgent.providerId}`);
     }
 
+    const runPrimary = async (queuedChainId?: string): Promise<void> => {
     // Register the pre-minted primary wakeId so Square can cancel it.
     if (primaryWakeId) {
       this.activeWakeIds.set(primaryWakeId, {
@@ -447,6 +481,7 @@ export class AgentBus {
       this.emitWakeEvent({
         kind: 'started',
         wakeId: primaryWakeId,
+        chainId: queuedChainId,
         targetAgentId: agentId,
         roomId,
         timestamp: Date.now(),
@@ -476,6 +511,16 @@ export class AgentBus {
       if (primaryWakeId) {
         this.activeWakeIds.delete(primaryWakeId);
       }
+    }
+    };
+
+    if (context?.skipWakeFanOut) {
+      // Ordered fan-out target: already queued and tracked by enqueueWake.
+      await runPrimary();
+    } else {
+      // A user message: if the agent is busy it waits on its own chain, never dropped.
+      const turnKey = primaryWakeId ?? this.generateWakeId(agentId, undefined, roomId);
+      await this.runUserTurn(agentId, roomId, turnKey, runPrimary);
     }
 
     const mentionedAgentIds = this.extractMentions(message);
@@ -1127,7 +1172,7 @@ export class AgentBus {
     return false;
   }
 
-  private emitWakeEvent(event: WakeFailureEvent | WakeTimeoutEvent | WakeMembershipDeniedEvent | WakeBackpressureEvent | WakeCancelledEvent | WakeStartedEvent | WakeOrderSkipEvent | WakeSuccessEvent | WakeChainCancelledEvent | WakeDepthExceededEvent | WakeBudgetExceededEvent): void {
+  private emitWakeEvent(event: WakeEvent): void {
     if ('errorMessage' in event && typeof event.errorMessage === 'string') {
       event = { ...event, errorMessage: sanitizeErrorMessage(event.errorMessage) };
     }
@@ -1159,7 +1204,7 @@ export class AgentBus {
     if (this.activeWakes < this.maxConcurrentWakes) {
       this.activeWakes++;
       try {
-        await wakeFn();
+        await this.trackAgentRun(targetAgentId, finalWakeId, wakeFn());
       } finally {
         this.activeWakes--;
         this.activeWakeIds.delete(finalWakeId);
@@ -1198,7 +1243,7 @@ export class AgentBus {
       const next = this.wakeQueue.shift();
       if (next) {
         this.activeWakes++;
-        next.fn()
+        this.trackAgentRun(next.targetAgentId, next.wakeId, next.fn())
           .then(() => {
             next.resolve();
           })
@@ -1240,9 +1285,12 @@ export class AgentBus {
     onChunk?: (wakeId: string, agentId: string, chunk: string, done: boolean, lineage?: WakeLineage) => void,
     onComplete?: (wakeId: string, agentId: string, message: AgentBusMessage, lineage?: WakeLineage) => void,
     chainId: string = this.createWakeChainId(),
-    depth: number = 1
+    depth: number = 1,
+    opts: { userMessage?: boolean; queuedFrom?: string } = {}
   ): Promise<void> {
     if (this.cancelledChains.has(chainId)) return;
+    // Targets the user addressed directly (depth 1). Reply mentions are bot-triggered (depth > 1).
+    const userTurn = opts.userMessage === true && depth === 1;
     const chain = this.ensureChain(chainId, roomId, initiatorAgentId);
     chain.running++;
     const loopId = this.wakeLoopCounter++;
@@ -1275,8 +1323,17 @@ export class AgentBus {
       }
 
       const budget = this.getChainBudget(chainId);
-      // Dedupe only parallel duplicates; sequential back-and-forth is bounded by depth + budget.
-      if (budget.inFlight.has(target.agentId)) {
+      // A user message is never dropped as already-in-flight. If the agent is busy (any chain),
+      // it waits on its own new chain with its own budget and runs right after the current wake.
+      if (userTurn && !opts.queuedFrom && (this.isAgentBusy(target.agentId) || budget.inFlight.has(target.agentId))) {
+        await this.enqueueOrderedWakes(
+          [target], initiatorAgentId, roomId, onChunk, onComplete,
+          this.createWakeChainId(), 1, { userMessage: true, queuedFrom: chainId }
+        );
+        continue;
+      }
+      // Dedupe only parallel duplicates of bot-triggered wakes; sequential back-and-forth is bounded by depth + budget.
+      if (!userTurn && budget.inFlight.has(target.agentId)) {
         this.emitWakeEvent({
           kind: 'order-skip',
           wakeId,
@@ -1334,6 +1391,7 @@ export class AgentBus {
         chain.currentWakeIds.delete(wakeId);
       };
 
+      let finishUserTurn: (() => void) | undefined;
       try {
         if (roomId) {
           const { RoomManager } = require('./rooms');
@@ -1387,6 +1445,12 @@ export class AgentBus {
           releaseUnstarted();
           emitSkip('agent-not-found', `Agent not found: ${target.agentId}`);
           continue;
+        }
+
+        if (opts.queuedFrom) {
+          // Queued user message: refusals above came first; now wait for the agent's current wake.
+          finishUserTurn = await this.waitForUserTurn(target.agentId, wakeId, chainId, initiatorAgentId, roomId, opts.queuedFrom);
+          if (chain.cancelled) throw new Error('Wake cancelled');
         }
 
         this.activeWakeIds.set(wakeId, {
@@ -1499,6 +1563,8 @@ export class AgentBus {
           reason = 'membership-denied';
         }
         emitSkip(reason, errorMessage);
+      } finally {
+        finishUserTurn?.();
       }
     }
     } finally {
@@ -1506,6 +1572,110 @@ export class AgentBus {
       chain.running--;
       if (chain.running <= 0) this.endChain(chainId);
     }
+  }
+
+  /** Record a running wake on its agent until it settles. Returns the same promise. */
+  private trackAgentRun<T>(agentId: string, key: string, run: Promise<T>): Promise<T> {
+    let m = this.agentActivity.get(agentId);
+    if (!m) { m = new Map(); this.agentActivity.set(agentId, m); }
+    const settled = run.then(() => undefined, () => undefined);
+    m.set(key, settled);
+    void settled.then(() => {
+      const cur = this.agentActivity.get(agentId);
+      if (cur && cur.get(key) === settled) {
+        cur.delete(key);
+        if (cur.size === 0) this.agentActivity.delete(agentId);
+      }
+    });
+    return run;
+  }
+
+  /** True when the agent has a wake running or a user message already waiting for it. */
+  isAgentBusy(agentId: string): boolean {
+    return (this.agentActivity.get(agentId)?.size ?? 0) > 0;
+  }
+
+  /**
+   * Run a direct user message (DM or room primary). Idle agent: runs now. Busy agent: waits on a
+   * fresh chain with its own budget (1 wake), outside any bot chain, then runs.
+   */
+  private async runUserTurn<T>(
+    agentId: string,
+    roomId: string | undefined,
+    turnKey: string,
+    run: (queuedChainId?: string) => Promise<T>
+  ): Promise<T> {
+    if (!this.isAgentBusy(agentId)) {
+      return this.trackAgentRun(agentId, turnKey, run());
+    }
+    const chainId = this.createWakeChainId();
+    const chain = this.ensureChain(chainId, roomId);
+    const budget = this.getChainBudget(chainId);
+    chain.running++;
+    chain.currentWakeIds.add(turnKey);
+    budget.wakes++;
+    budget.inFlight.add(agentId);
+    this.rememberLineage(turnKey, { chainId, depth: 1 });
+    let finish: (() => void) | undefined;
+    try {
+      finish = await this.waitForUserTurn(agentId, turnKey, chainId, undefined, roomId, undefined);
+      if (chain.cancelled) throw new Error('Wake cancelled');
+      return await this.trackAgentRun(agentId, turnKey, run(chainId));
+    } finally {
+      finish?.();
+      budget.inFlight.delete(agentId);
+      chain.currentWakeIds.delete(turnKey);
+      chain.running--;
+      if (chain.running <= 0) this.endChain(chainId);
+    }
+  }
+
+  /** Snapshot of user messages waiting for their agent (harness / metrics). */
+  getQueuedUserWakes(): Array<{ wakeId: string; targetAgentId: string; chainId: string }> {
+    return Array.from(this.userQueued, ([wakeId, q]) => ({ wakeId, targetAgentId: q.targetAgentId, chainId: q.chainId }));
+  }
+
+  /**
+   * A user message to a busy agent: wait on its own chain until everything that is on the agent
+   * right now has finished, then run. Rejects with 'Wake cancelled' if cancelled while waiting.
+   * Bot-triggered wakes never come through here; their dedupe stays per chain.
+   */
+  private async waitForUserTurn(
+    targetAgentId: string,
+    wakeId: string,
+    chainId: string,
+    initiatorAgentId: string | undefined,
+    roomId: string | undefined,
+    fromChainId: string | undefined
+  ): Promise<() => void> {
+    const ahead = new Map(this.agentActivity.get(targetAgentId) ?? []);
+    let finish!: () => void;
+    const turnDone = new Promise<void>((r) => { finish = r; });
+    this.trackAgentRun(targetAgentId, `queued:${wakeId}`, turnDone);
+    let cancel!: () => void;
+    const cancelled = new Promise<never>((_, reject) => { cancel = () => reject(new Error('Wake cancelled')); });
+    cancelled.catch(() => undefined);
+    this.userQueued.set(wakeId, { targetAgentId, chainId, initiatorAgentId, roomId, cancel });
+    this.emitWakeEvent({
+      kind: 'user-queued',
+      wakeId,
+      chainId,
+      fromChainId,
+      targetAgentId,
+      initiatorAgentId,
+      roomId,
+      waitingForWakeIds: Array.from(ahead.keys()).map((k) => k.replace(/^queued:/, '')),
+      timestamp: Date.now(),
+    });
+    try {
+      await Promise.race([Promise.all(ahead.values()), cancelled]);
+    } catch (err) {
+      finish();
+      throw err;
+    } finally {
+      this.userQueued.delete(wakeId);
+    }
+    return finish;
   }
 
   private ensureChain(chainId: string, roomId?: string, initiatorAgentId?: string) {
@@ -1667,6 +1837,21 @@ export class AgentBus {
 
 
   cancelWake(wakeId: string): { cancelled: boolean; wasActive: boolean; wasQueued: boolean } {
+    // A user message still waiting for its agent.
+    const userWaiting = this.userQueued.get(wakeId);
+    if (userWaiting) {
+      this.userQueued.delete(wakeId);
+      this.emitWakeEvent({
+        kind: 'cancelled',
+        wakeId,
+        targetAgentId: userWaiting.targetAgentId,
+        initiatorAgentId: userWaiting.initiatorAgentId,
+        roomId: userWaiting.roomId,
+        timestamp: Date.now(),
+      });
+      userWaiting.cancel();
+      return { cancelled: true, wasActive: false, wasQueued: true };
+    }
     // Queue first: wakes are pre-registered in activeWakeIds before enqueue.
     const queueIndex = this.wakeQueue.findIndex((w) => w.wakeId === wakeId);
     if (queueIndex !== -1) {
