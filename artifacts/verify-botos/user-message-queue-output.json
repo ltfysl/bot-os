@@ -1,0 +1,56 @@
+{
+  "a_queueAfterInFlight": {
+    "queuedEvents": 1,
+    "waitingForBotWake": true,
+    "alreadyInFlightSkips": 0,
+    "userWakeRan": true,
+    "startedAfterBotDone": true
+  },
+  "b_ownChainAndBudget": {
+    "queuedChainId": "chain-1792159527871-2",
+    "botChainId": "chain-1792159527847-0",
+    "fromChainId": "chain-1792159527871-1",
+    "distinctFromBotChain": true,
+    "distinctFromIncomingChain": true,
+    "startedCarriesQueuedChain": true,
+    "queuedChainBudgetWhileWaiting": 1,
+    "botChainBudgetWhileWaiting": 2,
+    "budgetFreedAfterEnd": true
+  },
+  "a2_dmQueue": {
+    "queued": true,
+    "waitingForBotWake": true,
+    "dmAnswered": true,
+    "streamErrors": 0
+  },
+  "c_botChainCancel": {
+    "cancelOk": true,
+    "botWakeCancelled": true,
+    "userWakeCancelled": false,
+    "userWakeRan": true
+  },
+  "d_remyRequestOnQueuedAgent": {
+    "targetWasQueuedForUser": true,
+    "requestOk": true,
+    "alreadyInFlightSkips": 0,
+    "requestChainId": "chain-1792159531870-11",
+    "requestNotOnUserChain": true,
+    "requestNotOnBotFanOutChain": true,
+    "userChainBudgetBefore": 1,
+    "userChainBudgetAfter": 1,
+    "userWakeRan": true,
+    "requestSucceeded": true
+  },
+  "e_cancelOwnQueued": {
+    "cancelOk": true,
+    "queuedWakeCancelled": true,
+    "userWakeRan": false,
+    "budgetFreed": true,
+    "noLeftoverQueue": true
+  },
+  "botDedupeKept": {
+    "first": true,
+    "secondSkipped": true
+  },
+  "pass": true
+}

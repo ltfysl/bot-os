@@ -1,0 +1,14 @@
+{
+  "wakeTimeoutEmitted": true,
+  "timeoutMs": 5000,
+  "wakeChunksBeforeTimeout": 4,
+  "wakeChunksAfterTimeout": 0,
+  "doneAfterTimeout": false,
+  "channels": [
+    "message-stream-chunk",
+    "wake-started",
+    "wake-stream-chunk",
+    "wake-timeout"
+  ],
+  "pass": true
+}

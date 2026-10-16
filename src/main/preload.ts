@@ -133,6 +133,8 @@ export interface RoomStreamError {
   roomId: string;
   agentId?: string;
   error: string;
+  /** Wake the error belongs to, also when it failed before the first chunk. */
+  wakeId?: string;
 }
 
 export type WidgetType = 'single-select' | 'multi-select' | 'danger' | 'allow-custom';
@@ -216,12 +218,25 @@ export interface WakeBudgetExceededEvent {
 export interface WakeDepthExceededEvent {
   kind?: 'depth-exceeded';
   wakeId: string;
+  chainId?: string;
   parentWakeId?: string;
   roomId?: string;
   initiatorAgentId: string;
   targetAgentId: string;
   depth: number;
   maxDepth: number;
+  timestamp: number;
+}
+
+export interface WakeUserQueuedEvent {
+  kind?: 'user-queued';
+  wakeId: string;
+  chainId: string;
+  fromChainId?: string;
+  targetAgentId: string;
+  initiatorAgentId?: string;
+  roomId?: string;
+  waitingForWakeIds: string[];
   timestamp: number;
 }
 
@@ -326,6 +341,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: Electron.IpcRendererEvent, e: WakeDepthExceededEvent) => callback(e);
     ipcRenderer.on('wake-depth-exceeded', handler);
     return () => ipcRenderer.removeListener('wake-depth-exceeded', handler);
+  },
+  onWakeUserQueued: (callback: (event: WakeUserQueuedEvent) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, e: WakeUserQueuedEvent) => callback(e);
+    ipcRenderer.on('wake-user-queued', handler);
+    return () => ipcRenderer.removeListener('wake-user-queued', handler);
   },
   cancelWakeChain: (chainId: string): Promise<CancelWakeChainResult> =>
     ipcRenderer.invoke('cancel-wake-chain', chainId),

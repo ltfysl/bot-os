@@ -94,12 +94,25 @@ export interface WakeBudgetExceededEvent {
 export interface WakeDepthExceededEvent {
   kind?: 'depth-exceeded';
   wakeId: string;
+  chainId?: string;
   parentWakeId?: string;
   roomId?: string;
   initiatorAgentId: string;
   targetAgentId: string;
   depth: number;
   maxDepth: number;
+  timestamp: number;
+}
+
+export interface WakeUserQueuedEvent {
+  kind?: 'user-queued';
+  wakeId: string;
+  chainId: string;
+  fromChainId?: string;
+  targetAgentId: string;
+  initiatorAgentId?: string;
+  roomId?: string;
+  waitingForWakeIds: string[];
   timestamp: number;
 }
 
@@ -265,6 +278,8 @@ export interface RoomStreamError {
   roomId: string;
   agentId?: string;
   error: string;
+  /** Wake the error belongs to, also when it failed before the first chunk. */
+  wakeId?: string;
 }
 
 export type WidgetType = 'single-select' | 'multi-select' | 'danger' | 'allow-custom';
@@ -302,6 +317,7 @@ declare global {
       cancelWake: (wakeId: string) => Promise<CancelWakeResult>;
       onWakeBudgetExceeded: (callback: (event: WakeBudgetExceededEvent) => void) => (() => void);
       onWakeDepthExceeded: (callback: (event: WakeDepthExceededEvent) => void) => (() => void);
+      onWakeUserQueued: (callback: (event: WakeUserQueuedEvent) => void) => (() => void);
       cancelWakeChain: (chainId: string) => Promise<CancelWakeChainResult>;
       onWakeChainCancelled: (callback: (event: WakeChainCancelledEvent) => void) => (() => void);
       getWakeBackpressureStats: () => Promise<WakeBackpressureStats>;
